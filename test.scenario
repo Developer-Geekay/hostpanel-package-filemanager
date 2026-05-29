@@ -1,0 +1,65 @@
+# hostpanel-files — Test Scenarios
+
+## Prerequisites
+- Panel running, logged in as admin or standard hosting user.
+- Root path writable (e.g. `/home/testuser/public_html`).
+
+---
+
+## SCENARIO 1: View File Manager page & Folder Tree
+Steps:
+1. Navigate to Websites -> File Manager (or via `/app/pkg/files`).
+2. Expected:
+   - Sidebar displays a "Folder Tree" box loading nested directories.
+   - Main Explorer displays breadcrumbs `Home / home` (or user's home folder) and a grid listing of folders/files inside.
+   - Visual look matches the exact material/neumorphic dashboard theme (backgrounds, border lines, typography).
+
+## SCENARIO 2: Create a Folder
+Steps:
+1. Click "+ New Folder" on the toolbar.
+2. Enter `blog-folder` and save.
+3. Expected:
+   - Success toast "Folder created: blog-folder".
+   - `blog-folder` appears in both the central list and the left Sidebar Folder Tree.
+
+## SCENARIO 3: Create a File & Edit with Ace Editor
+Steps:
+1. Click "+ New File" on the toolbar.
+2. Enter `index.html` and click Save.
+3. Expected:
+   - File is created, and the premium **Ace Editor** immediately overlay mounts in dark tomorrow_night theme.
+   - Code session auto-detects `HTML` highlighting mode.
+4. Action: Type a simple HTML skeleton: `<h1>Hello World</h1>` and click "Save".
+5. Expected:
+   - Overlay unmounts. Success toast "File saved successfully".
+   - File listing displays `index.html` with correct size and type icon.
+
+## SCENARIO 4: Rename Folder/File
+Steps:
+1. Locate `index.html`, click its "Rename" icon.
+2. Enter `home.html` and submit.
+3. Expected:
+   - Success toast.
+   - Item name changes in list to `home.html`.
+
+## SCENARIO 5: Create a ZIP Archive
+Steps:
+1. Select the `blog-folder` created in Scenario 2, click its Zip icon.
+2. Enter `blog-archive.zip` and submit.
+3. Expected:
+   - Success toast "Archive created: blog-archive.zip".
+   - File list shows `blog-archive.zip` with custom zip icon.
+
+## SCENARIO 6: Extract a ZIP Archive (Unzip)
+Steps:
+1. Select `blog-archive.zip`, click its "Extract" action button.
+2. Enter target destination path `/home/<username>/public_html/extracted-blog` and submit.
+3. Expected:
+   - Success toast "Extraction completed".
+   - Folder tree and list displays `extracted-blog` with `blog-folder` unpacked inside.
+
+## SCENARIO 7: Zip Slip / Directory Traversal Protection
+Steps:
+1. Attempt to upload or manipulate an unsafe ZIP archive containing files traversing out of bounds (e.g. `../../etc/passwd`).
+2. Expected:
+   - Backend `/unzip` resolves real paths, catches violation, and raises a 403 HTTP Exception, safely blocking the Zip Slip attack.
