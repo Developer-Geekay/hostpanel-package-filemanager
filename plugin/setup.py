@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="hostpanel-files",
-    version="1.0.3",
+    version="1.0.4",
     packages=find_packages(),
     install_requires=["fastapi", "pydantic"],
     entry_points={

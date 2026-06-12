@@ -68,8 +68,9 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
     dest = srcs[0].parent / archive_name
     _safe_path(str(dest), current_user)
 
+    tmp = Path(f"/tmp/_hpzip_{archive_name}")
     try:
-        with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for src in srcs:
                 if src.is_dir():
                     for root, _, files in os.walk(src):
@@ -79,9 +80,19 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
                             zipf.write(filepath, arcname)
                 else:
                     zipf.write(src, src.name)
+        # Move to destination — use sudo tee since dest dir may not be writable by API user
+        try:
+            tmp.rename(dest)
+        except OSError:
+            with open(tmp, 'rb') as f:
+                r = subprocess.run(["sudo", "-n", "tee", str(dest)], stdin=f, stdout=subprocess.DEVNULL, check=False)
+            if r.returncode != 0:
+                raise PermissionError(f"sudo tee failed writing {dest}")
+            tmp.unlink(missing_ok=True)
         logger.info(f"Created archive: {dest}")
         return {"message": f"Created archive {archive_name}"}
     except Exception as e:
+        tmp.unlink(missing_ok=True)
         logger.error(f"Zip failed: {e}")
         raise HTTPException(status_code=500, detail=f"Zip compression failed: {str(e)}")
 
