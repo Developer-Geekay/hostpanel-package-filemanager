@@ -2,6 +2,7 @@ from hostpanel_filemanager.files import router as filemanager_router
 
 PLUGIN_MANIFEST = {
     "requires_core": [1, 0, 0],
+    "repository": "https://github.com/Developer-Geekay/hostpanel-package-filemanager",
     "nav_items": [
         {
             "nav_route":         "files",
