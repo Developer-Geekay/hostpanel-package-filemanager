@@ -293,7 +293,7 @@
           <a
             class="btn btn-ghost btn-sm" style=${{ fontSize: 11, textDecoration: 'none' }}
             title="Download file"
-            href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + selectedFile.name)}
+            href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + selectedFile.name) + '&token=' + encodeURIComponent(localStorage.getItem('auth_token') ?? '')}
             download
           >Download</a>
         `}
@@ -570,7 +570,7 @@
               ${selectedNames.size === 1 && singleSelected?.type === 'file' && html`
                 <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => handleOpenFile(singleSelected)}>Edit</button>
                 <a class="btn btn-ghost btn-sm" style=${{ fontSize: 11, textDecoration: 'none' }}
-                  href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + singleSelected.name)}
+                  href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + singleSelected.name) + '&token=' + encodeURIComponent(localStorage.getItem('auth_token') ?? '')}
                   download onClick=${(e) => e.stopPropagation()}>Download</a>
               `}
               ${selectedNames.size === 1 && html`
@@ -731,7 +731,7 @@
                                       <a
                                         class="btn btn-ghost btn-sm" style=${{ padding: 4 }}
                                         title="Download File"
-                                        href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + file.name)}
+                                        href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + file.name) + '&token=' + encodeURIComponent(localStorage.getItem('auth_token') ?? '')}
                                         download
                                         onClick=${(e) => e.stopPropagation()}
                                       >
