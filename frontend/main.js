@@ -105,7 +105,6 @@
       window.ace.config.set('basePath', '/packages/files/');
       window.ace.config.set('modePath', '/packages/files/');
       window.ace.config.set('themePath', '/packages/files/');
-      // Disable background web workers (syntax linting) — worker files are not bundled
       window.ace.config.set('useWorker', false);
       callback();
     };
@@ -116,16 +115,12 @@
   function AceEditor({ path, content, onSave, onClose }) {
     const containerRef = useRef(null);
     const editorRef = useRef(null);
-    const aceNodeRef = useRef(null);  // imperatively-created inner div — Preact never sees it
+    const aceNodeRef = useRef(null);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
       loadAce(() => {
         if (!containerRef.current) return;
-
-        // Create a plain div for Ace to own. Preact rendered containerRef as empty,
-        // so it has no virtual children — we append this node imperatively to keep
-        // Preact's vdom in sync and avoid removeChild mismatches on unmount.
         const aceNode = document.createElement('div');
         aceNode.style.cssText = 'width:100%;height:100%;';
         containerRef.current.appendChild(aceNode);
@@ -134,7 +129,6 @@
         const editor = window.ace.edit(aceNode);
         editor.setTheme("ace/theme/tomorrow_night");
 
-        // Auto-detect mode based on file extension
         const ext = path.split('.').pop().toLowerCase();
         let mode = 'ace/mode/text';
         if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) mode = 'ace/mode/javascript';
@@ -164,8 +158,6 @@
           editorRef.current.destroy();
           editorRef.current = null;
         }
-        // Remove the imperatively-created Ace node before Preact unmounts containerRef,
-        // so Preact only ever sees its own empty container and removeChild never mismatches.
         if (aceNodeRef.current) {
           aceNodeRef.current.remove();
           aceNodeRef.current = null;
@@ -174,32 +166,17 @@
     }, [path, content]);
 
     const handleSave = () => {
-      if (editorRef.current) {
-        onSave(editorRef.current.getValue());
-      }
+      if (editorRef.current) onSave(editorRef.current.getValue());
     };
 
     return html`
       <div style=${{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(0,0,0,0.85)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '20px'
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
+        display: 'flex', flexDirection: 'column', padding: '20px'
       }}>
         <div class="card" style=${{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-          <!-- Editor Title & Header -->
-          <div style=${{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between', 
-            padding: '12px 20px', 
-            borderBottom: '1px solid var(--border-2)',
-            background: 'var(--bg-3)'
-          }}>
+          <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid var(--border-2)', background: 'var(--bg-3)' }}>
             <div>
               <span style=${{ fontSize: 13, fontWeight: 600 }}>Editing file</span>
               <div style=${{ fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>${path}</div>
@@ -209,8 +186,6 @@
               <button class="btn btn-primary btn-sm" onClick=${handleSave}>Save</button>
             </div>
           </div>
-          
-          <!-- Editor mount -->
           <div ref=${containerRef} style=${{ flex: 1, width: '100%', height: '100%', background: '#1d1f21' }}>
             ${!loaded && html`<div style=${{ color: 'var(--text-2)', padding: 20 }}>Loading Ace Editor…</div>`}
           </div>
@@ -232,55 +207,31 @@
       }
     }, [currentPath]);
 
-    const handleToggle = (e) => {
-      e.stopPropagation();
-      setExpanded(!expanded);
-    };
-
-    const handleSelect = (e) => {
-      e.stopPropagation();
-      onSelectPath(node.path);
-    };
+    const handleToggle = (e) => { e.stopPropagation(); setExpanded(!expanded); };
+    const handleSelect = (e) => { e.stopPropagation(); onSelectPath(node.path); };
 
     return html`
       <div style=${{ marginLeft: 12 }}>
-        <div 
+        <div
           style=${{
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 6, 
-            padding: '4px 6px', 
-            borderRadius: 'var(--radius-sm)',
-            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
             background: isSelected ? 'var(--accent-dim)' : 'transparent',
-            color: isSelected ? 'var(--accent)' : 'var(--text)',
-            marginBottom: 2
+            color: isSelected ? 'var(--accent)' : 'var(--text)', marginBottom: 2
           }}
           onClick=${handleSelect}
         >
-          ${hasChildren 
-            ? html`
-                <span onClick=${handleToggle} style=${{ display: 'inline-flex', width: 12, cursor: 'pointer', userSelect: 'none', fontSize: 9 }}>
-                  ${expanded ? '▼' : '▶'}
-                </span>
-              `
+          ${hasChildren
+            ? html`<span onClick=${handleToggle} style=${{ display: 'inline-flex', width: 12, cursor: 'pointer', userSelect: 'none', fontSize: 9 }}>${expanded ? '▼' : '▶'}</span>`
             : html`<span style=${{ display: 'inline-flex', width: 12 }}></span>`
           }
           <${FolderIcon} />
-          <span style=${{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            ${node.name}
-          </span>
+          <span style=${{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>${node.name}</span>
         </div>
-        
         ${expanded && hasChildren && html`
           <div style=${{ borderLeft: '1px solid var(--border-2)', marginLeft: 6 }}>
             ${node.children.map(child => html`
-              <${FolderNode} 
-                key=${child.path} 
-                node=${child} 
-                currentPath=${currentPath} 
-                onSelectPath=${onSelectPath} 
-              />
+              <${FolderNode} key=${child.path} node=${child} currentPath=${currentPath} onSelectPath=${onSelectPath} />
             `)}
           </div>
         `}
@@ -288,44 +239,123 @@
     `;
   }
 
-  // ── Breadcrumbs component ───────────────────────────────────────────────────
+  // ── Breadcrumbs component ─────────────────────────────────────────────────────
   function Breadcrumbs({ path, onNavigate }) {
     const parts = path.split('/').filter(Boolean);
-
     const handleClick = (index) => {
       const targetPath = '/' + parts.slice(0, index + 1).join('/');
       onNavigate(targetPath);
     };
-
     return html`
       <div style=${{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 13, fontFamily: 'var(--font-ui)' }}>
-        <span 
-          style=${{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 500 }}
-          onClick=${() => onNavigate(parts[0] === 'home' ? '/home' : '/')}
-        >
+        <span style=${{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 500 }} onClick=${() => onNavigate(parts[0] === 'home' ? '/home' : '/')}>
           Home
         </span>
-        
         ${parts.map((part, index) => html`
           <span key=${index} style=${{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style=${{ color: 'var(--text-3)' }}>/</span>
-            <span 
-              style=${{ 
-                cursor: index === parts.length - 1 ? 'default' : 'pointer', 
+            <span
+              style=${{
+                cursor: index === parts.length - 1 ? 'default' : 'pointer',
                 color: index === parts.length - 1 ? 'var(--text)' : 'var(--accent)',
                 fontWeight: index === parts.length - 1 ? 600 : 400
               }}
               onClick=${() => index !== parts.length - 1 && handleClick(index)}
-            >
-              ${part}
-            </span>
+            >${part}</span>
           </span>
         `)}
       </div>
     `;
   }
 
-  // ── Root Plugin component ────────────────────────────────────────────────────
+  // ── Selection Toolbar (shown when ≥1 item selected) ──────────────────────────
+  function SelectionToolbar({ count, selectedFile, currentPath, onClear, onDelete, onRename, onEdit, onCompress, onExtract }) {
+    const isFile = selectedFile && selectedFile.type === 'file';
+    const isZip = selectedFile && selectedFile.name.toLowerCase().endsWith('.zip');
+    const sep = html`<span style=${{ width: 1, height: 18, background: 'var(--border-2)', display: 'inline-block', margin: '0 2px' }}></span>`;
+
+    return html`
+      <div style=${{
+        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        padding: '7px 12px', marginBottom: 10,
+        background: 'var(--accent-dim)', border: '1px solid var(--accent)',
+        borderRadius: 'var(--radius)', fontSize: 12,
+      }}>
+        <span style=${{ fontWeight: 600, color: 'var(--accent)', marginRight: 2 }}>
+          ${count} item${count > 1 ? 's' : ''} selected
+        </span>
+        <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11, padding: '2px 7px' }} onClick=${onClear}>✕ Clear</button>
+        ${sep}
+        ${count === 1 && isFile && html`
+          <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} title="Edit file" onClick=${() => onEdit(selectedFile)}>
+            Edit
+          </button>
+          <a
+            class="btn btn-ghost btn-sm" style=${{ fontSize: 11, textDecoration: 'none' }}
+            title="Download file"
+            href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + selectedFile.name)}
+            download
+          >Download</a>
+        `}
+        ${count === 1 && html`
+          <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} title="Rename" onClick=${() => onRename(selectedFile)}>Rename</button>
+        `}
+        <button
+          class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }}
+          title="Compress to zip"
+          onClick=${() => onCompress()}
+        >Compress</button>
+        ${count === 1 && isZip && html`
+          <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} title="Extract zip" onClick=${() => onExtract(selectedFile)}>Extract</button>
+        `}
+        <div style=${{ flex: 1 }}></div>
+        <button class="btn btn-danger btn-sm" style=${{ fontSize: 11 }} onClick=${onDelete}>
+          Delete${count > 1 ? ' (' + count + ')' : ''}
+        </button>
+      </div>
+    `;
+  }
+
+  // ── Extract Modal (custom, pre-filled destination) ────────────────────────────
+  function ExtractModal({ file, defaultPath, onClose, onSubmit }) {
+    const [destDir, setDestDir] = useState(defaultPath);
+    const [busy, setBusy] = useState(false);
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (!destDir.trim()) return;
+      setBusy(true);
+      try { await onSubmit(destDir.trim()); }
+      finally { setBusy(false); }
+    };
+
+    return html`
+      <div style=${{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div class="card" style=${{ width: '100%', maxWidth: 480, padding: 24 }}>
+          <h3 style=${{ margin: '0 0 4px', fontSize: 15, fontWeight: 600 }}>Extract Zip Archive</h3>
+          <p style=${{ margin: '0 0 16px', fontSize: 12, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>${file.name}</p>
+          <form onSubmit=${handleSubmit}>
+            <label style=${{ display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 6 }}>Destination Folder</label>
+            <input
+              class="input"
+              type="text"
+              value=${destDir}
+              onInput=${(e) => setDestDir(e.target.value)}
+              required
+              style=${{ width: '100%', marginBottom: 16, fontFamily: 'var(--font-mono)', fontSize: 12, boxSizing: 'border-box' }}
+              autoFocus
+            />
+            <div style=${{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" class="btn btn-ghost btn-sm" onClick=${onClose} disabled=${busy}>Cancel</button>
+              <button type="submit" class="btn btn-primary btn-sm" disabled=${busy}>${busy ? 'Extracting…' : 'Extract'}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Root Plugin component ─────────────────────────────────────────────────────
   function FileManagerPlugin() {
     const { ok, err: toastErr } = useToast();
     const isAdmin = localStorage.getItem('user_role') === 'admin';
@@ -333,32 +363,49 @@
     const rootPath = isAdmin ? '/home' : homeDir;
 
     const [currentPath, setCurrentPath] = useState(rootPath);
-    const [editorFile, setEditorFile] = useState(null);  // { path, content } — edit mode
-    const [viewerFile, setViewerFile] = useState(null);  // { path, content } — read-only mode
+    const [editorFile, setEditorFile]   = useState(null);
+    const [viewerFile, setViewerFile]   = useState(null);
 
-    // Modal target triggers
-    const [mkdirOpen, setMkdirOpen] = useState(false);
-    const [mkfileOpen, setMkfileOpen] = useState(false);
-    const [renameTarget, setRenameTarget] = useState(null); // row item
-    const [deleteTarget, setDeleteTarget] = useState(null); // row item
-    const [zipTarget, setZipTarget] = useState(null); // row item
-    const [unzipTarget, setUnzipTarget] = useState(null); // row item
+    // ── Selection state ─────────────────────────────────────────────────────────
+    const [selectedNames, setSelectedNames] = useState(new Set());
+    const [lastClickIdx, setLastClickIdx]   = useState(-1);
+    const [hoveredName, setHoveredName]     = useState(null);
+
+    // ── Modal targets ───────────────────────────────────────────────────────────
+    const [mkdirOpen, setMkdirOpen]       = useState(false);
+    const [mkfileOpen, setMkfileOpen]     = useState(false);
+    const [renameTarget, setRenameTarget] = useState(null);
+    const [deleteTarget, setDeleteTarget] = useState(null);   // single item
+    const [deleteTargets, setDeleteTargets] = useState(null); // multiple items
+    const [zipTarget, setZipTarget]       = useState(null);
+    const [unzipTarget, setUnzipTarget]   = useState(null);
 
     const fileInputRef = useRef(null);
+    const [localFiles, setLocalFiles] = useState(null);
 
-    // Fetch directory tree list
+    // ── Data fetching ───────────────────────────────────────────────────────────
     const { data: treeData, loading: treeLoading, refetch: refetchTree } = useApi(
       () => sdk.fetch('GET', '/cpanelapi/files/tree?path=' + encodeURIComponent(rootPath)),
       [rootPath]
     );
-
-    // Fetch files in directory
     const { data: filesData, loading: filesLoading, refetch: refetchFiles } = useApi(
       () => sdk.fetch('GET', '/cpanelapi/files/list?path=' + encodeURIComponent(currentPath)),
       [currentPath]
     );
 
-    // Navigate to parent directory
+    // Sync localFiles from API data (source of truth after each fetch)
+    useEffect(() => {
+      if (filesData !== null) setLocalFiles(filesData);
+    }, [filesData]);
+
+    // Clear selection and local cache whenever the directory changes
+    useEffect(() => {
+      setSelectedNames(new Set());
+      setLastClickIdx(-1);
+      setLocalFiles(null);
+    }, [currentPath]);
+
+    // ── Navigation ──────────────────────────────────────────────────────────────
     const handleGoUp = () => {
       if (currentPath === rootPath || currentPath === '/') return;
       const parts = currentPath.split('/').filter(Boolean);
@@ -366,7 +413,7 @@
       setCurrentPath('/' + parts.join('/'));
     };
 
-    // Open file for read-only viewing (click on filename)
+    // ── File open/edit/save ─────────────────────────────────────────────────────
     const handleViewFile = async (file) => {
       const filePath = currentPath + '/' + file.name;
       try {
@@ -377,25 +424,20 @@
       }
     };
 
-    // Open file for editing (pencil button)
     const handleOpenFile = async (file) => {
       const filePath = currentPath + '/' + file.name;
       try {
         const res = await sdk.fetch('GET', '/cpanelapi/files/read?path=' + encodeURIComponent(filePath));
         setEditorFile({ path: filePath, content: res.content });
       } catch (err) {
-        toastErr(err.message || 'Could not read file');
+        toastErr(err.message || 'Could not open file');
       }
     };
 
-    // Save edited file contents
     const handleSaveFile = async (newContent) => {
       if (!editorFile) return;
       try {
-        await sdk.fetch('POST', '/cpanelapi/files/write', {
-          path: editorFile.path,
-          content: newContent
-        });
+        await sdk.fetch('POST', '/cpanelapi/files/write', { path: editorFile.path, content: newContent });
         ok('File saved successfully');
         setEditorFile(null);
         refetchFiles();
@@ -404,43 +446,109 @@
       }
     };
 
-    // Upload selected file
+    // ── Upload ──────────────────────────────────────────────────────────────────
     const handleUpload = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
       const formData = new FormData();
       formData.append('path', currentPath);
       formData.append('file', file);
-
       try {
         ok('Uploading ' + file.name + '...');
         const token = localStorage.getItem('auth_token') ?? '';
         const response = await fetch('/cpanelapi/files/upload', {
           method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + token
-          },
-          body: formData
+          headers: { 'Authorization': 'Bearer ' + token },
+          body: formData,
         });
-
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-
+        if (!response.ok) throw new Error(await response.text());
         ok('Uploaded ' + file.name + ' successfully!');
         refetchFiles();
         refetchTree();
       } catch (err) {
         toastErr(err.message || 'Upload failed');
       } finally {
-        if (fileInputRef.current) fileInputRef.current.value = ''; // reset file picker
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
 
+    // ── Row selection logic ─────────────────────────────────────────────────────
+    const handleRowClick = (file, idx, e) => {
+      // Don't trigger selection when clicking action buttons inside the row
+      if (e.target.closest('button, a')) return;
+      // Second click of a double-click — let onDoubleClick handle navigation
+      if (e.detail >= 2) return;
+
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl/Cmd: toggle individual item
+        const next = new Set(selectedNames);
+        if (next.has(file.name)) next.delete(file.name);
+        else next.add(file.name);
+        setSelectedNames(next);
+        setLastClickIdx(idx);
+      } else if (e.shiftKey && lastClickIdx >= 0) {
+        // Shift: range select from last clicked
+        const files = filesData || [];
+        const start = Math.min(lastClickIdx, idx);
+        const end   = Math.max(lastClickIdx, idx);
+        const next  = new Set(selectedNames);
+        for (let i = start; i <= end; i++) next.add(files[i].name);
+        setSelectedNames(next);
+      } else {
+        // Plain click: select only this item (deselect if already the only one)
+        if (selectedNames.size === 1 && selectedNames.has(file.name)) {
+          setSelectedNames(new Set());
+          setLastClickIdx(-1);
+        } else {
+          setSelectedNames(new Set([file.name]));
+          setLastClickIdx(idx);
+        }
+      }
+    };
+
+    // Double-click: navigate into folder OR open file viewer
+    const handleRowDblClick = (file) => {
+      if (file.type === 'dir') {
+        setSelectedNames(new Set());
+        setCurrentPath(currentPath + '/' + file.name);
+      } else {
+        handleViewFile(file);
+      }
+    };
+
+    // Header checkbox: toggle select-all / deselect-all
+    const handleSelectAll = () => {
+      if (!localFiles?.length) return;
+      if (selectedNames.size === localFiles.length) {
+        setSelectedNames(new Set());
+      } else {
+        setSelectedNames(new Set(localFiles.map(f => f.name)));
+      }
+    };
+
+    // ── Selection toolbar actions ───────────────────────────────────────────────
+    const handleToolbarDelete = () => {
+      const targets = (localFiles || []).filter(f => selectedNames.has(f.name));
+      if (targets.length === 1) setDeleteTarget(targets[0]);
+      else if (targets.length > 1) setDeleteTargets(targets);
+    };
+
+    const handleToolbarCompress = () => {
+      const selected = (localFiles || []).filter(f => selectedNames.has(f.name));
+      setZipTarget(selected.length === 1 ? selected[0] : { name: 'archive', _multi: selected });
+    };
+
+    // ── Render ──────────────────────────────────────────────────────────────────
+    const allSelected = !!(localFiles?.length && selectedNames.size === localFiles.length);
+    const someSelected = selectedNames.size > 0 && !allSelected;
+    const singleSelected = selectedNames.size === 1
+      ? (localFiles || []).find(f => selectedNames.has(f.name)) ?? null
+      : null;
+
     return html`
       <div class="page">
-        <!-- Header -->
+
+        <!-- Page Header -->
         <div class="page-header">
           <div>
             <h1 class="page-title">File Manager</h1>
@@ -448,9 +556,60 @@
           </div>
         </div>
 
+        <!-- Full-width nav bar above both panels -->
+        <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10, minHeight: 32 }}>
+
+          <!-- Left: breadcrumbs when nothing selected, selection actions otherwise -->
+          <div style=${{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+            ${selectedNames.size > 0 ? html`
+              <span style=${{ fontWeight: 600, color: 'var(--accent)', fontSize: 13 }}>
+                ${selectedNames.size} item${selectedNames.size > 1 ? 's' : ''} selected
+              </span>
+              <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => { setSelectedNames(new Set()); setLastClickIdx(-1); }}>✕ Clear</button>
+              <span style=${{ width: 1, height: 16, background: 'var(--border-2)', display: 'inline-block', margin: '0 2px' }}></span>
+              ${selectedNames.size === 1 && singleSelected?.type === 'file' && html`
+                <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => handleOpenFile(singleSelected)}>Edit</button>
+                <a class="btn btn-ghost btn-sm" style=${{ fontSize: 11, textDecoration: 'none' }}
+                  href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + singleSelected.name)}
+                  download onClick=${(e) => e.stopPropagation()}>Download</a>
+              `}
+              ${selectedNames.size === 1 && html`
+                <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => setRenameTarget(singleSelected)}>Rename</button>
+              `}
+              <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }}
+                onClick=${handleToolbarCompress}>Compress</button>
+              ${selectedNames.size === 1 && singleSelected?.name?.toLowerCase().endsWith('.zip') && html`
+                <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => setUnzipTarget(singleSelected)}>Extract</button>
+              `}
+              <button class="btn btn-danger btn-sm" style=${{ fontSize: 11 }} onClick=${handleToolbarDelete}>
+                Delete${selectedNames.size > 1 ? ' (' + selectedNames.size + ')' : ''}
+              </button>
+            ` : html`
+              <${Breadcrumbs} path=${currentPath} onNavigate=${setCurrentPath} />
+            `}
+          </div>
+
+          <!-- Right: always-visible navigation + upload buttons -->
+          <div style=${{ display: 'flex', gap: 6 }}>
+            <button class="btn btn-ghost btn-sm" title="Go Up" onClick=${handleGoUp} disabled=${currentPath === rootPath || currentPath === '/'}>
+              <${ArrowUpIcon} /> Up
+            </button>
+            <button class="btn btn-ghost btn-sm" title="Refresh" onClick=${() => { refetchFiles(); refetchTree(); }}>
+              <${RefreshIcon} /> Refresh
+            </button>
+            <button class="btn btn-ghost btn-sm" onClick=${() => setMkfileOpen(true)}>+ New File</button>
+            <button class="btn btn-ghost btn-sm" onClick=${() => setMkdirOpen(true)}>+ New Folder</button>
+            <button class="btn btn-primary btn-sm" onClick=${() => fileInputRef.current?.click()}>
+              <${UploadIcon} /> Upload
+            </button>
+            <input type="file" ref=${fileInputRef} style=${{ display: 'none' }} onChange=${handleUpload} />
+          </div>
+        </div>
+
         <!-- Sidebar tree + Explorer flex grid -->
         <div style=${{ display: 'flex', gap: 20, alignItems: 'stretch' }}>
-          <!-- Folder Tree sidebar card -->
+
+          <!-- Folder Tree sidebar -->
           <div class="card" style=${{ width: 250, flexShrink: 0, padding: '16px 12px', background: 'var(--bg-2)', display: 'flex', flexDirection: 'column' }}>
             <span style=${{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-2)', letterSpacing: '.08em', marginBottom: 12, paddingLeft: 12 }}>
               Folder Tree
@@ -459,67 +618,19 @@
               ${treeLoading
                 ? html`<div style=${{ color: 'var(--text-3)', fontSize: 12, paddingLeft: 12 }}>Loading tree…</div>`
                 : treeData
-                  ? html`
-                      <${FolderNode} 
-                        node=${treeData} 
-                        currentPath=${currentPath} 
-                        onSelectPath=${setCurrentPath} 
-                      />
-                    `
+                  ? html`<${FolderNode} node=${treeData} currentPath=${currentPath} onSelectPath=${setCurrentPath} />`
                   : html`<div style=${{ color: 'var(--text-3)', fontSize: 12, paddingLeft: 12 }}>No directories</div>`
               }
             </div>
           </div>
 
-          <!-- Main Files list card -->
+          <!-- Main Files panel -->
           <div class="card" style=${{ flex: 1, padding: '16px 20px', background: 'var(--bg-2)', display: 'flex', flexDirection: 'column' }}>
-            <!-- Actions top navigation bar -->
-            <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-              <!-- Breadcrumbs navigation -->
-              <${Breadcrumbs} path=${currentPath} onNavigate=${setCurrentPath} />
-
-              <!-- Toolbar commands -->
-              <div style=${{ display: 'flex', gap: 6 }}>
-                <button 
-                  class="btn btn-ghost btn-sm" 
-                  title="Go Up"
-                  onClick=${handleGoUp}
-                  disabled=${currentPath === rootPath || currentPath === '/'}
-                >
-                  <${ArrowUpIcon} />
-                  Up
-                </button>
-                <button 
-                  class="btn btn-ghost btn-sm" 
-                  title="Refresh"
-                  onClick=${() => { refetchFiles(); refetchTree(); }}
-                >
-                  <${RefreshIcon} />
-                  Refresh
-                </button>
-                <button class="btn btn-ghost btn-sm" onClick=${() => setMkfileOpen(true)}>
-                  + New File
-                </button>
-                <button class="btn btn-ghost btn-sm" onClick=${() => setMkdirOpen(true)}>
-                  + New Folder
-                </button>
-                <button class="btn btn-primary btn-sm" onClick=${() => fileInputRef.current?.click()}>
-                  <${UploadIcon} />
-                  Upload
-                </button>
-                <input 
-                  type="file" 
-                  ref=${fileInputRef} 
-                  style=${{ display: 'none' }} 
-                  onChange=${handleUpload} 
-                />
-              </div>
-            </div>
 
             <!-- Directory listing table -->
-            ${filesLoading
+            ${(filesLoading && !localFiles)
               ? html`<div style=${{ color: 'var(--text-2)', fontSize: 13, padding: 20 }}>Loading files…</div>`
-              : !filesData?.length
+              : !localFiles?.length
                 ? html`
                     <div class="empty">
                       <div class="empty-title">This folder is empty</div>
@@ -528,95 +639,117 @@
                   `
                 : html`
                     <div class="table-wrap">
-                      <table>
+                      <table style=${{ tableLayout: 'fixed', width: '100%' }}>
                         <thead>
                           <tr>
+                            <th style=${{ width: 36 }}>
+                              <input
+                                type="checkbox"
+                                checked=${allSelected}
+                                ref=${(el) => { if (el) el.indeterminate = someSelected; }}
+                                onChange=${handleSelectAll}
+                                title="Select all"
+                              />
+                            </th>
                             <th>Name</th>
-                            <th>Size</th>
-                            <th>Modified</th>
-                            <th>Permissions</th>
-                            <th style=${{ textAlign: 'right' }}>Actions</th>
+                            <th style=${{ width: 80 }}>Size</th>
+                            <th style=${{ width: 110 }}>Modified</th>
+                            <th style=${{ width: 110 }}>Permissions</th>
+                            <th style=${{ width: 140, textAlign: 'right' }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          ${filesData.map(file => {
-                            const isFolder = file.type === 'dir';
-                            const isZip = file.name.toLowerCase().endsWith('.zip');
-                            const icon = isFolder 
-                              ? html`<${FolderIcon} />` 
-                              : isZip 
-                                ? html`<${ZipIcon} />` 
-                                : html`<${FileIcon} />`;
+                          ${localFiles.map((file, idx) => {
+                            const isSelected = selectedNames.has(file.name);
+                            const isHovered  = hoveredName === file.name;
+                            const isFolder   = file.type === 'dir';
+                            const isZip      = file.name.toLowerCase().endsWith('.zip');
+                            const icon       = isFolder ? html`<${FolderIcon} />` : isZip ? html`<${ZipIcon} />` : html`<${FileIcon} />`;
+                            const showActions = isHovered || isSelected;
 
                             return html`
-                              <tr key=${file.name}>
+                              <tr
+                                key=${file.name}
+                                style=${{
+                                  background: isSelected ? 'var(--accent-dim)' : 'transparent',
+                                  outline: isSelected ? '1px solid var(--accent)' : 'none',
+                                  outlineOffset: '-1px',
+                                  cursor: 'default',
+                                  userSelect: 'none',
+                                  transition: 'background 0.1s',
+                                }}
+                                onClick=${(e) => handleRowClick(file, idx, e)}
+                                onDoubleClick=${() => handleRowDblClick(file)}
+                                onMouseEnter=${() => setHoveredName(file.name)}
+                                onMouseLeave=${() => setHoveredName(null)}
+                              >
+                                <!-- Checkbox -->
+                                <td style=${{ width: 36, textAlign: 'center' }} onClick=${(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked=${isSelected}
+                                    onChange=${(e) => {
+                                      e.stopPropagation();
+                                      const next = new Set(selectedNames);
+                                      if (isSelected) next.delete(file.name);
+                                      else next.add(file.name);
+                                      setSelectedNames(next);
+                                    }}
+                                  />
+                                </td>
+
+                                <!-- Name -->
                                 <td>
-                                  <div 
-                                    style=${{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-                                    onClick=${() => isFolder ? setCurrentPath(currentPath + '/' + file.name) : handleViewFile(file)}
-                                  >
+                                  <div style=${{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     ${icon}
-                                    <span style=${{ fontWeight: isFolder ? 500 : 400, color: 'var(--text)' }}>
+                                    <span style=${{ fontWeight: isFolder ? 500 : 400, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       ${file.name}
                                     </span>
+                                    ${isFolder && html`
+                                      <span style=${{ fontSize: 10, color: 'var(--text-3)', marginLeft: 2 }} title="Double-click to open">↵</span>
+                                    `}
                                   </div>
                                 </td>
-                                <td class="mono" style=${{ color: 'var(--text-2)' }}>${file.size}</td>
-                                <td style=${{ color: 'var(--text-2)' }}>${file.modified}</td>
-                                <td class="mono" style=${{ color: 'var(--text-3)' }}>${file.permissions}</td>
-                                <td>
-                                  <div style=${{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+
+                                <!-- Size / Modified / Permissions -->
+                                <td class="mono" style=${{ color: 'var(--text-2)', fontSize: 12 }}>${file.size}</td>
+                                <td style=${{ color: 'var(--text-2)', fontSize: 12 }}>${file.modified}</td>
+                                <td class="mono" style=${{ color: 'var(--text-3)', fontSize: 12 }}>${file.permissions}</td>
+
+                                <!-- Per-row action buttons (visible on hover or selection) -->
+                                <td style=${{ textAlign: 'right' }}>
+                                  <div style=${{
+                                    display: 'flex', gap: 4, justifyContent: 'flex-end',
+                                    opacity: showActions ? 1 : 0,
+                                    pointerEvents: showActions ? 'auto' : 'none',
+                                    transition: 'opacity 0.12s',
+                                  }}>
                                     ${!isFolder && html`
-                                      <button 
-                                        class="btn btn-ghost btn-sm" 
-                                        style=${{ padding: 4 }} 
-                                        title="Edit File"
-                                        onClick=${() => handleOpenFile(file)}
-                                      >
+                                      <button class="btn btn-ghost btn-sm" style=${{ padding: 4 }} title="Edit File" onClick=${(e) => { e.stopPropagation(); handleOpenFile(file); }}>
                                         <${EditIcon} />
                                       </button>
-                                      <a 
-                                        class="btn btn-ghost btn-sm" 
-                                        style=${{ padding: 4 }} 
+                                      <a
+                                        class="btn btn-ghost btn-sm" style=${{ padding: 4 }}
                                         title="Download File"
                                         href=${'/cpanelapi/files/download?path=' + encodeURIComponent(currentPath + '/' + file.name)}
                                         download
+                                        onClick=${(e) => e.stopPropagation()}
                                       >
                                         <${DownloadIcon} />
                                       </a>
                                     `}
                                     ${isZip && html`
-                                      <button 
-                                        class="btn btn-ghost btn-sm" 
-                                        style=${{ padding: 4 }} 
-                                        title="Decompress (Unzip)"
-                                        onClick=${() => setUnzipTarget(file)}
-                                      >
+                                      <button class="btn btn-ghost btn-sm" style=${{ padding: '4px 6px', fontSize: 11 }} title="Extract zip" onClick=${(e) => { e.stopPropagation(); setUnzipTarget(file); }}>
                                         Extract
                                       </button>
                                     `}
-                                    <button 
-                                      class="btn btn-ghost btn-sm" 
-                                      style=${{ padding: 4 }} 
-                                      title="Compress (Zip)"
-                                      onClick=${() => setZipTarget(file)}
-                                    >
+                                    <button class="btn btn-ghost btn-sm" style=${{ padding: 4 }} title="Compress (Zip)" onClick=${(e) => { e.stopPropagation(); setZipTarget(file); }}>
                                       <${ZipActionIcon} />
                                     </button>
-                                    <button 
-                                      class="btn btn-ghost btn-sm" 
-                                      style=${{ padding: 4 }} 
-                                      title="Rename"
-                                      onClick=${() => setRenameTarget(file)}
-                                    >
+                                    <button class="btn btn-ghost btn-sm" style=${{ padding: 4 }} title="Rename" onClick=${(e) => { e.stopPropagation(); setRenameTarget(file); }}>
                                       <${RenameIcon} />
                                     </button>
-                                    <button 
-                                      class="btn btn-danger btn-sm" 
-                                      style=${{ padding: 4 }} 
-                                      title="Delete"
-                                      onClick=${() => setDeleteTarget(file)}
-                                    >
+                                    <button class="btn btn-danger btn-sm" style=${{ padding: 4 }} title="Delete" onClick=${(e) => { e.stopPropagation(); setDeleteTarget(file); }}>
                                       <${DeleteIcon} />
                                     </button>
                                   </div>
@@ -629,12 +762,20 @@
                     </div>
                   `
             }
+
+            <!-- Hint bar -->
+            ${localFiles?.length > 0 && html`
+              <div style=${{ marginTop: 10, fontSize: 11, color: 'var(--text-3)' }}>
+                Click to select · Ctrl+click to multi-select · Shift+click to range select · Double-click to open/navigate
+              </div>
+            `}
+
           </div>
         </div>
 
-        <!-- ── POPUP DIALOGS & OVERLAYS ────────────────────────────────────────── -->
+        <!-- ── OVERLAYS & MODALS ─────────────────────────────────────────────── -->
 
-        <!-- Read-only File Viewer Overlay -->
+        <!-- Read-only File Viewer -->
         ${viewerFile && !editorFile && html`
           <div style=${{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', padding: 20 }}>
             <div class="card" style=${{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
@@ -653,7 +794,7 @@
           </div>
         `}
 
-        <!-- Text Editor Overlay -->
+        <!-- Ace Text Editor -->
         ${editorFile && html`
           <${AceEditor}
             path=${editorFile.path}
@@ -663,36 +804,28 @@
           />
         `}
 
-        <!-- New Folder Modal -->
+        <!-- New Folder -->
         ${mkdirOpen && html`
           <${SdkFormModal}
             open=${true}
             title="Create Directory"
-            fields=${[{
-              key: 'name', label: 'Directory Name', type: 'text',
-              required: true, placeholder: 'my-folder'
-            }]}
+            fields=${[{ key: 'name', label: 'Directory Name', type: 'text', required: true, placeholder: 'my-folder' }]}
             onClose=${() => setMkdirOpen(false)}
             onSubmit=${async (values) => {
-              const fullPath = currentPath + '/' + values.name;
-              await sdk.fetch('POST', '/cpanelapi/files/mkdir', { path: fullPath });
+              await sdk.fetch('POST', '/cpanelapi/files/mkdir', { path: currentPath + '/' + values.name });
               setMkdirOpen(false);
-              refetchFiles();
-              refetchTree();
+              refetchFiles(); refetchTree();
               ok('Folder created: ' + values.name);
             }}
           />
         `}
 
-        <!-- New File Modal -->
+        <!-- New File -->
         ${mkfileOpen && html`
           <${SdkFormModal}
             open=${true}
             title="Create Empty File"
-            fields=${[{
-              key: 'name', label: 'File Name', type: 'text',
-              required: true, placeholder: 'index.html'
-            }]}
+            fields=${[{ key: 'name', label: 'File Name', type: 'text', required: true, placeholder: 'index.html' }]}
             onClose=${() => setMkfileOpen(false)}
             onSubmit=${async (values) => {
               const fullPath = currentPath + '/' + values.name;
@@ -700,51 +833,44 @@
               setMkfileOpen(false);
               refetchFiles();
               ok('File created: ' + values.name);
-              // Open file editor directly
               setEditorFile({ path: fullPath, content: '' });
             }}
           />
         `}
 
-        <!-- Rename Modal -->
+        <!-- Rename -->
         ${renameTarget && html`
           <${SdkFormModal}
             open=${true}
             title=${'Rename — ' + renameTarget.name}
-            fields=${[{
-              key: 'new_name', label: 'New Name', type: 'text',
-              required: true, placeholder: renameTarget.name
-            }]}
+            fields=${[{ key: 'new_name', label: 'New Name', type: 'text', required: true, placeholder: renameTarget.name }]}
             onClose=${() => setRenameTarget(null)}
             onSubmit=${async (values) => {
-              const srcPath = currentPath + '/' + renameTarget.name;
               await sdk.fetch('POST', '/cpanelapi/filemanager/rename', {
-                path: srcPath,
-                new_name: values.new_name
+                path: currentPath + '/' + renameTarget.name,
+                new_name: values.new_name,
               });
               setRenameTarget(null);
-              refetchFiles();
-              refetchTree();
+              refetchFiles(); refetchTree();
               ok('Renamed successfully');
             }}
           />
         `}
 
-        <!-- Zip Archive Modal -->
+        <!-- Compress (Zip) -->
         ${zipTarget && html`
           <${SdkFormModal}
             open=${true}
             title="Create Zip Archive"
-            fields=${[{
-              key: 'archive_name', label: 'Archive Name', type: 'text',
-              required: true, placeholder: zipTarget.name + '.zip'
-            }]}
+            fields=${[{ key: 'archive_name', label: 'Archive Name', type: 'text', required: true, placeholder: zipTarget.name + '.zip' }]}
             onClose=${() => setZipTarget(null)}
             onSubmit=${async (values) => {
-              const srcPath = currentPath + '/' + zipTarget.name;
+              const paths = zipTarget._multi
+                ? zipTarget._multi.map(f => currentPath + '/' + f.name)
+                : [currentPath + '/' + zipTarget.name];
               await sdk.fetch('POST', '/cpanelapi/filemanager/zip', {
-                path: srcPath,
-                archive_name: values.archive_name
+                paths,
+                archive_name: values.archive_name,
               });
               setZipTarget(null);
               refetchFiles();
@@ -753,31 +879,25 @@
           />
         `}
 
-        <!-- Unzip Extraction Modal -->
+        <!-- Extract (Unzip) -->
         ${unzipTarget && html`
-          <${SdkFormModal}
-            open=${true}
-            title="Extract Zip Archive"
-            fields=${[{
-              key: 'dest_dir', label: 'Destination Folder', type: 'text',
-              required: true, placeholder: currentPath
-            }]}
+          <${ExtractModal}
+            file=${unzipTarget}
+            defaultPath=${currentPath}
             onClose=${() => setUnzipTarget(null)}
-            onSubmit=${async (values) => {
-              const srcPath = currentPath + '/' + unzipTarget.name;
+            onSubmit=${async (destDir) => {
               await sdk.fetch('POST', '/cpanelapi/filemanager/unzip', {
-                archive_path: srcPath,
-                dest_dir: values.dest_dir
+                archive_path: currentPath + '/' + unzipTarget.name,
+                dest_dir: destDir,
               });
               setUnzipTarget(null);
-              refetchFiles();
-              refetchTree();
+              refetchFiles(); refetchTree();
               ok('Extraction completed');
             }}
           />
         `}
 
-        <!-- Delete Confirmation Modal -->
+        <!-- Delete single item -->
         ${deleteTarget && html`
           <${SdkConfirmModal}
             open=${true}
@@ -786,15 +906,55 @@
             danger=${true}
             onClose=${() => setDeleteTarget(null)}
             onConfirm=${async () => {
-              const fullPath = currentPath + '/' + deleteTarget.name;
-              await sdk.fetch('DELETE', '/cpanelapi/files/delete?path=' + encodeURIComponent(fullPath));
+              const target = deleteTarget;
+              setLocalFiles(prev => (prev || []).filter(f => f.name !== target.name));
               setDeleteTarget(null);
-              refetchFiles();
-              refetchTree();
-              ok('Deleted successfully');
+              setSelectedNames(prev => { const n = new Set(prev); n.delete(target.name); return n; });
+              try {
+                await sdk.fetch('DELETE', '/cpanelapi/files/delete?path=' + encodeURIComponent(currentPath + '/' + target.name));
+                if (target.type === 'dir') refetchTree();
+                ok('Deleted successfully');
+              } catch (e) {
+                toastErr(e.message || 'Delete failed');
+                refetchFiles();
+              }
             }}
           />
         `}
+
+        <!-- Delete multiple items -->
+        ${deleteTargets && html`
+          <${SdkConfirmModal}
+            open=${true}
+            title=${'Delete ' + deleteTargets.length + ' Items'}
+            message=${'Permanently delete ' + deleteTargets.length + ' selected items? This cannot be undone.'}
+            danger=${true}
+            onClose=${() => setDeleteTargets(null)}
+            onConfirm=${async () => {
+              const targets = deleteTargets;
+              const names = new Set(targets.map(f => f.name));
+              const hasDir = targets.some(f => f.type === 'dir');
+              setLocalFiles(prev => (prev || []).filter(f => !names.has(f.name)));
+              setDeleteTargets(null);
+              setSelectedNames(new Set());
+              let errors = 0;
+              for (const file of targets) {
+                try {
+                  await sdk.fetch('DELETE', '/cpanelapi/files/delete?path=' + encodeURIComponent(currentPath + '/' + file.name));
+                } catch { errors++; }
+              }
+              if (errors > 0) {
+                toastErr(errors + ' item(s) could not be deleted');
+                refetchFiles();
+                if (hasDir) refetchTree();
+              } else {
+                if (hasDir) refetchTree();
+                ok('Deleted ' + targets.length + ' item(s) successfully');
+              }
+            }}
+          />
+        `}
+
       </div>
     `;
   }
