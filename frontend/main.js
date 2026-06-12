@@ -93,6 +93,29 @@
     </svg>
   `;
 
+  const CutIcon = () => html`
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="6" cy="20" r="2"/><circle cx="6" cy="4" r="2"/>
+      <line x1="6" y1="6" x2="6" y2="18"/>
+      <line x1="21" y1="4" x2="6" y2="18"/>
+      <line x1="21" y1="20" x2="6" y2="6"/>
+    </svg>
+  `;
+
+  const CopyIcon = () => html`
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  `;
+
+  const PasteIcon = () => html`
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+    </svg>
+  `;
+
   const PermissionsIcon = () => html`
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -383,14 +406,21 @@
 
   function ChmodModal({ file, currentPath, onClose, onDone }) {
     const [perms, setPerms] = useState(() => parsePerms(file.permissions));
+    // Separate state for the text input so it doesn't snap back while the user is typing
+    const [octalInput, setOctalInput] = useState(() => octalStr(permsToOctal(parsePerms(file.permissions))));
     const [busy, setBusy] = useState(false);
     const { ok, err: toastErr } = useToast();
 
-    const toggle = (key) => setPerms(p => ({ ...p, [key]: !p[key] }));
+    const toggle = (key) => {
+      const next = { ...perms, [key]: !perms[key] };
+      setPerms(next);
+      setOctalInput(octalStr(permsToOctal(next)));
+    };
     const octal = octalStr(permsToOctal(perms));
 
     const handleOctalInput = (e) => {
       const val = e.target.value.replace(/[^0-7]/g, '').slice(0, 3);
+      setOctalInput(val); // let the user type freely
       if (val.length === 3) {
         const n = parseInt(val, 8);
         setPerms({
@@ -461,7 +491,7 @@
 
           <div style=${{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
             <label style=${{ fontSize: 12, color: 'var(--text-2)' }}>Octal:</label>
-            <input class="input" type="text" value=${octal} onInput=${handleOctalInput}
+            <input class="input" type="text" value=${octalInput} maxLength=${3} onInput=${handleOctalInput}
               style=${{ width: 70, fontFamily: 'var(--font-mono)', fontSize: 14, textAlign: 'center', letterSpacing: 3 }} />
             <span style=${{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)' }}>
               (${['','',''].map((_,i) => {
@@ -507,6 +537,8 @@
     const [zipTarget, setZipTarget]       = useState(null);
     const [unzipTarget, setUnzipTarget]   = useState(null);
     const [chmodTarget, setChmodTarget]   = useState(null);
+    // clipboard: { items: [{name, type}], srcDir: string, mode: 'cut'|'copy' } | null
+    const [clipboard, setClipboard]       = useState(null);
 
     const fileInputRef = useRef(null);
     const [localFiles, setLocalFiles] = useState(null);
@@ -666,6 +698,38 @@
       setZipTarget(selected.length === 1 ? selected[0] : { name: 'archive', _multi: selected });
     };
 
+    const handleCut = () => {
+      const items = (localFiles || []).filter(f => selectedNames.has(f.name));
+      if (!items.length) return;
+      setClipboard({ items, srcDir: currentPath, mode: 'cut' });
+      ok(`Cut ${items.length} item${items.length > 1 ? 's' : ''}`);
+      setSelectedNames(new Set());
+    };
+
+    const handleCopy = () => {
+      const items = (localFiles || []).filter(f => selectedNames.has(f.name));
+      if (!items.length) return;
+      setClipboard({ items, srcDir: currentPath, mode: 'copy' });
+      ok(`Copied ${items.length} item${items.length > 1 ? 's' : ''} to clipboard`);
+      setSelectedNames(new Set());
+    };
+
+    const handlePaste = async () => {
+      if (!clipboard) return;
+      const { items, srcDir, mode } = clipboard;
+      const paths = items.map(f => srcDir + '/' + f.name);
+      const endpoint = mode === 'cut' ? '/cpanelapi/filemanager/move' : '/cpanelapi/filemanager/copy';
+      try {
+        await sdk.fetch('POST', endpoint, { paths, dest_dir: currentPath });
+        ok(`${mode === 'cut' ? 'Moved' : 'Copied'} ${items.length} item${items.length > 1 ? 's' : ''} here`);
+        if (mode === 'cut') setClipboard(null);
+        refetchFiles();
+        refetchTree();
+      } catch (e) {
+        toastErr(e.message || `${mode === 'cut' ? 'Move' : 'Copy'} failed`);
+      }
+    };
+
     // ── Render ──────────────────────────────────────────────────────────────────
     const allSelected = !!(localFiles?.length && selectedNames.size === localFiles.length);
     const someSelected = selectedNames.size > 0 && !allSelected;
@@ -705,6 +769,8 @@
                 <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => setRenameTarget(singleSelected)}>Rename</button>
                 <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => setChmodTarget(singleSelected)}>Permissions</button>
               `}
+              <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${handleCut}>Cut</button>
+              <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${handleCopy}>Copy</button>
               <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }}
                 onClick=${handleToolbarCompress}>Compress</button>
               ${selectedNames.size === 1 && singleSelected?.name?.toLowerCase().endsWith('.zip') && html`
@@ -720,6 +786,22 @@
 
           <!-- Right: always-visible navigation + upload buttons -->
           <div style=${{ display: 'flex', gap: 6 }}>
+            ${clipboard && html`
+              <button
+                class="btn btn-ghost btn-sm"
+                style=${{ fontSize: 11, borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                title=${'Paste ' + clipboard.items.length + ' item(s) here (' + clipboard.mode + ')'}
+                onClick=${handlePaste}
+              >
+                <${PasteIcon} /> Paste${clipboard.items.length > 1 ? ' (' + clipboard.items.length + ')' : ''}
+              </button>
+              <button
+                class="btn btn-ghost btn-sm"
+                style=${{ fontSize: 11, padding: '2px 6px' }}
+                title="Clear clipboard"
+                onClick=${() => setClipboard(null)}
+              >✕</button>
+            `}
             <button class="btn btn-ghost btn-sm" title="Go Up" onClick=${handleGoUp} disabled=${currentPath === rootPath || currentPath === '/'}>
               <${ArrowUpIcon} /> Up
             </button>

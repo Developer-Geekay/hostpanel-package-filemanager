@@ -29,6 +29,16 @@ class UnzipRequest(BaseModel):
     dest_dir: str
 
 
+class MoveRequest(BaseModel):
+    paths: list[str]
+    dest_dir: str
+
+
+class CopyRequest(BaseModel):
+    paths: list[str]
+    dest_dir: str
+
+
 class ChmodRequest(BaseModel):
     path: str
     mode: int
@@ -156,6 +166,69 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
         raise HTTPException(status_code=500, detail=f"Zip extraction failed: {str(e)}")
 
 
+@router.post("/move")
+async def move_paths(req: MoveRequest, current_user: User = Depends(get_current_user)):
+    if not req.paths:
+        raise HTTPException(status_code=400, detail="No paths provided.")
+    dest_dir = _safe_path(req.dest_dir, current_user)
+    if not dest_dir.exists() or not dest_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Destination directory not found.")
+    errors = []
+    for raw_path in req.paths:
+        src = _safe_path(raw_path, current_user)
+        if not src.exists():
+            errors.append(f"{src.name}: not found")
+            continue
+        dest = dest_dir / src.name
+        if dest.exists():
+            errors.append(f"{src.name}: destination already exists")
+            continue
+        try:
+            shutil.move(str(src), str(dest))
+        except PermissionError:
+            r = subprocess.run(["sudo", "-n", "mv", str(src), str(dest)], capture_output=True, check=False)
+            if r.returncode != 0:
+                errors.append(f"{src.name}: permission denied")
+    if errors:
+        raise HTTPException(status_code=409, detail="; ".join(errors))
+    logger.info(f"Moved {len(req.paths)} item(s) -> {dest_dir}")
+    return {"message": f"Moved {len(req.paths)} item(s)"}
+
+
+@router.post("/copy")
+async def copy_paths(req: CopyRequest, current_user: User = Depends(get_current_user)):
+    if not req.paths:
+        raise HTTPException(status_code=400, detail="No paths provided.")
+    dest_dir = _safe_path(req.dest_dir, current_user)
+    if not dest_dir.exists() or not dest_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Destination directory not found.")
+    errors = []
+    for raw_path in req.paths:
+        src = _safe_path(raw_path, current_user)
+        if not src.exists():
+            errors.append(f"{src.name}: not found")
+            continue
+        dest = dest_dir / src.name
+        if dest.exists():
+            stem = src.stem if not src.is_dir() else src.name
+            suffix = src.suffix if not src.is_dir() else ''
+            counter = 1
+            while dest.exists():
+                dest = dest_dir / f"{stem}_copy{counter}{suffix}"
+                counter += 1
+        try:
+            if src.is_dir():
+                shutil.copytree(str(src), str(dest))
+            else:
+                shutil.copy2(str(src), str(dest))
+        except PermissionError:
+            errors.append(f"{src.name}: permission denied")
+    if errors:
+        raise HTTPException(status_code=409, detail="; ".join(errors))
+    logger.info(f"Copied {len(req.paths)} item(s) -> {dest_dir}")
+    return {"message": f"Copied {len(req.paths)} item(s)"}
+
+
 @router.post("/chmod")
 async def chmod_path(req: ChmodRequest, current_user: User = Depends(get_current_user)):
     if not (0 <= req.mode <= 0o7777):
@@ -167,7 +240,7 @@ async def chmod_path(req: ChmodRequest, current_user: User = Depends(get_current
         p.chmod(req.mode)
     except PermissionError:
         r = subprocess.run(
-            ["sudo", "-n", "chmod", oct(req.mode)[2:], str(p)],
+            ["sudo", "-n", "/opt/hostpanel/bin/hp-chmod", oct(req.mode)[2:], str(p)],
             capture_output=True, check=False,
         )
         if r.returncode != 0:
