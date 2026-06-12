@@ -93,6 +93,13 @@
     </svg>
   `;
 
+  const PermissionsIcon = () => html`
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+    </svg>
+  `;
+
   // ── Dynamic Ace Editor Loader & Component ────────────────────────────────────
   function loadAce(callback) {
     if (window.ace) {
@@ -355,6 +362,126 @@
     `;
   }
 
+  // ── Chmod Modal ───────────────────────────────────────────────────────────────
+  function parsePerms(str) {
+    // str like "-rwxr-xr-x" or "drwxr-xr-x", we read chars 1-9
+    const s = (str || '---------').padEnd(10, '-');
+    return {
+      ur: s[1] === 'r', uw: s[2] === 'w', ux: s[3] === 'x',
+      gr: s[4] === 'r', gw: s[5] === 'w', gx: s[6] === 'x',
+      or: s[7] === 'r', ow: s[8] === 'w', ox: s[9] === 'x',
+    };
+  }
+  function permsToOctal(p) {
+    return ((p.ur?4:0)+(p.uw?2:0)+(p.ux?1:0)) * 64
+         + ((p.gr?4:0)+(p.gw?2:0)+(p.gx?1:0)) * 8
+         + ((p.or?4:0)+(p.ow?2:0)+(p.ox?1:0));
+  }
+  function octalStr(n) {
+    return n.toString(8).padStart(3, '0');
+  }
+
+  function ChmodModal({ file, currentPath, onClose, onDone }) {
+    const [perms, setPerms] = useState(() => parsePerms(file.permissions));
+    const [busy, setBusy] = useState(false);
+    const { ok, err: toastErr } = useToast();
+
+    const toggle = (key) => setPerms(p => ({ ...p, [key]: !p[key] }));
+    const octal = octalStr(permsToOctal(perms));
+
+    const handleOctalInput = (e) => {
+      const val = e.target.value.replace(/[^0-7]/g, '').slice(0, 3);
+      if (val.length === 3) {
+        const n = parseInt(val, 8);
+        setPerms({
+          ur: !!(n & 0o400), uw: !!(n & 0o200), ux: !!(n & 0o100),
+          gr: !!(n & 0o040), gw: !!(n & 0o020), gx: !!(n & 0o010),
+          or: !!(n & 0o004), ow: !!(n & 0o002), ox: !!(n & 0o001),
+        });
+      }
+    };
+
+    const handleSave = async () => {
+      setBusy(true);
+      try {
+        await sdk.fetch('POST', '/cpanelapi/filemanager/chmod', {
+          path: currentPath + '/' + file.name,
+          mode: permsToOctal(perms),
+        });
+        ok('Permissions updated');
+        onDone();
+      } catch(e) {
+        toastErr(e.message || 'chmod failed');
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const Row = ({ label, rKey, wKey, xKey }) => html`
+      <tr>
+        <td style=${{ padding: '6px 12px 6px 0', fontSize: 13, color: 'var(--text-2)', width: 70 }}>${label}</td>
+        ${['r', 'w', 'x'].map((bit, i) => {
+          const key = [rKey, wKey, xKey][i];
+          return html`
+            <td style=${{ textAlign: 'center', padding: '6px 8px' }}>
+              <input type="checkbox" checked=${perms[key]} onChange=${() => toggle(key)}
+                style=${{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }} />
+            </td>
+          `;
+        })}
+      </tr>
+    `;
+
+    return html`
+      <div style=${{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div class="card" style=${{ width: '100%', maxWidth: 380, padding: 24 }}>
+          <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div>
+              <h3 style=${{ margin: '0 0 3px', fontSize: 15, fontWeight: 600 }}>Change Permissions</h3>
+              <p style=${{ margin: 0, fontSize: 12, color: 'var(--text-2)', fontFamily: 'var(--font-mono)' }}>${file.name}</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" style=${{ padding: '2px 6px', fontSize: 16 }} onClick=${onClose}>×</button>
+          </div>
+
+          <table style=${{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+            <thead>
+              <tr>
+                <th style=${{ padding: '4px 12px 8px 0', textAlign: 'left', fontSize: 11, color: 'var(--text-3)', fontWeight: 500 }}></th>
+                ${['Read', 'Write', 'Execute'].map(h => html`
+                  <th style=${{ padding: '4px 8px 8px', textAlign: 'center', fontSize: 11, color: 'var(--text-3)', fontWeight: 500 }}>${h}</th>
+                `)}
+              </tr>
+            </thead>
+            <tbody>
+              <${Row} label="Owner" rKey="ur" wKey="uw" xKey="ux" />
+              <${Row} label="Group" rKey="gr" wKey="gw" xKey="gx" />
+              <${Row} label="Others" rKey="or" wKey="ow" xKey="ox" />
+            </tbody>
+          </table>
+
+          <div style=${{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <label style=${{ fontSize: 12, color: 'var(--text-2)' }}>Octal:</label>
+            <input class="input" type="text" value=${octal} onInput=${handleOctalInput}
+              style=${{ width: 70, fontFamily: 'var(--font-mono)', fontSize: 14, textAlign: 'center', letterSpacing: 3 }} />
+            <span style=${{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-3)' }}>
+              (${['','',''].map((_,i) => {
+                const bits = [['ur','uw','ux'],['gr','gw','gx'],['or','ow','ox']][i];
+                return (perms[bits[0]]?'r':'-') + (perms[bits[1]]?'w':'-') + (perms[bits[2]]?'x':'-');
+              }).join('')})
+            </span>
+          </div>
+
+          <div style=${{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button class="btn btn-ghost btn-sm" onClick=${onClose} disabled=${busy}>Cancel</button>
+            <button class="btn btn-primary btn-sm" onClick=${handleSave} disabled=${busy}>
+              ${busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // ── Root Plugin component ─────────────────────────────────────────────────────
   function FileManagerPlugin() {
     const { ok, err: toastErr } = useToast();
@@ -379,6 +506,7 @@
     const [deleteTargets, setDeleteTargets] = useState(null); // multiple items
     const [zipTarget, setZipTarget]       = useState(null);
     const [unzipTarget, setUnzipTarget]   = useState(null);
+    const [chmodTarget, setChmodTarget]   = useState(null);
 
     const fileInputRef = useRef(null);
     const [localFiles, setLocalFiles] = useState(null);
@@ -575,6 +703,7 @@
               `}
               ${selectedNames.size === 1 && html`
                 <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => setRenameTarget(singleSelected)}>Rename</button>
+                <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }} onClick=${() => setChmodTarget(singleSelected)}>Permissions</button>
               `}
               <button class="btn btn-ghost btn-sm" style=${{ fontSize: 11 }}
                 onClick=${handleToolbarCompress}>Compress</button>
@@ -748,6 +877,9 @@
                                     </button>
                                     <button class="btn btn-ghost btn-sm" style=${{ padding: 4 }} title="Rename" onClick=${(e) => { e.stopPropagation(); setRenameTarget(file); }}>
                                       <${RenameIcon} />
+                                    </button>
+                                    <button class="btn btn-ghost btn-sm" style=${{ padding: 4 }} title="Permissions (chmod)" onClick=${(e) => { e.stopPropagation(); setChmodTarget(file); }}>
+                                      <${PermissionsIcon} />
                                     </button>
                                     <button class="btn btn-danger btn-sm" style=${{ padding: 4 }} title="Delete" onClick=${(e) => { e.stopPropagation(); setDeleteTarget(file); }}>
                                       <${DeleteIcon} />
@@ -952,6 +1084,15 @@
                 ok('Deleted ' + targets.length + ' item(s) successfully');
               }
             }}
+          />
+        `}
+
+        ${chmodTarget && html`
+          <${ChmodModal}
+            file=${chmodTarget}
+            currentPath=${currentPath}
+            onClose=${() => setChmodTarget(null)}
+            onDone=${() => { setChmodTarget(null); refetchFiles(); }}
           />
         `}
 

@@ -29,6 +29,11 @@ class UnzipRequest(BaseModel):
     dest_dir: str
 
 
+class ChmodRequest(BaseModel):
+    path: str
+    mode: int
+
+
 @router.post("/rename")
 async def rename_path(req: RenameRequest, current_user: User = Depends(get_current_user)):
     p = _safe_path(req.path, current_user)
@@ -149,3 +154,23 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
     except Exception as e:
         logger.error(f"Unzip failed: {e}")
         raise HTTPException(status_code=500, detail=f"Zip extraction failed: {str(e)}")
+
+
+@router.post("/chmod")
+async def chmod_path(req: ChmodRequest, current_user: User = Depends(get_current_user)):
+    if not (0 <= req.mode <= 0o7777):
+        raise HTTPException(status_code=400, detail="Invalid mode value.")
+    p = _safe_path(req.path, current_user)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Path not found.")
+    try:
+        p.chmod(req.mode)
+    except PermissionError:
+        r = subprocess.run(
+            ["sudo", "-n", "chmod", oct(req.mode)[2:], str(p)],
+            capture_output=True, check=False,
+        )
+        if r.returncode != 0:
+            raise HTTPException(status_code=403, detail="Permission denied changing permissions.")
+    logger.info(f"chmod {oct(req.mode)} {p}")
+    return {"message": "Permissions updated"}
