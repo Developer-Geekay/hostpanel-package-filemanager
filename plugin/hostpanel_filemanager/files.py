@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from auth import User
 from deps import get_current_user
+from modules.audit.logger import log_action
 from routers.files import _safe_path
 
 router = APIRouter(prefix="/cpanelapi/filemanager", tags=["FileManager"])
@@ -59,7 +60,7 @@ async def rename_path(req: RenameRequest, current_user: User = Depends(get_curre
         
     try:
         shutil.move(str(p), str(target))
-        logger.info(f"Renamed {p} -> {target}")
+        log_action(current_user.username, "file.rename", str(p), f"→ {req.new_name}")
         return {"message": f"Renamed to {req.new_name}"}
     except Exception as e:
         logger.error(f"Rename failed: {e}")
@@ -104,7 +105,7 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
             if r.returncode != 0:
                 raise PermissionError(f"sudo tee failed writing {dest}")
             tmp.unlink(missing_ok=True)
-        logger.info(f"Created archive: {dest}")
+        log_action(current_user.username, "file.zip", archive_name, f"{len(req.paths)} item(s)")
         return {"message": f"Created archive {archive_name}"}
     except Exception as e:
         tmp.unlink(missing_ok=True)
@@ -157,7 +158,7 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
                         )
                         if r.returncode != 0:
                             raise PermissionError(f"sudo tee failed for {member.filename}")
-        logger.info(f"Extracted {archive} -> {dest_dir}")
+        log_action(current_user.username, "file.unzip", str(archive), f"→ {dest_dir.name}")
         return {"message": f"Extracted archive to {dest_dir.name}"}
     except HTTPException:
         raise
@@ -191,7 +192,7 @@ async def move_paths(req: MoveRequest, current_user: User = Depends(get_current_
                 errors.append(f"{src.name}: permission denied")
     if errors:
         raise HTTPException(status_code=409, detail="; ".join(errors))
-    logger.info(f"Moved {len(req.paths)} item(s) -> {dest_dir}")
+    log_action(current_user.username, "file.move", req.dest_dir, f"{len(req.paths)} item(s)")
     return {"message": f"Moved {len(req.paths)} item(s)"}
 
 
@@ -225,7 +226,7 @@ async def copy_paths(req: CopyRequest, current_user: User = Depends(get_current_
             errors.append(f"{src.name}: permission denied")
     if errors:
         raise HTTPException(status_code=409, detail="; ".join(errors))
-    logger.info(f"Copied {len(req.paths)} item(s) -> {dest_dir}")
+    log_action(current_user.username, "file.copy", req.dest_dir, f"{len(req.paths)} item(s)")
     return {"message": f"Copied {len(req.paths)} item(s)"}
 
 
@@ -245,5 +246,5 @@ async def chmod_path(req: ChmodRequest, current_user: User = Depends(get_current
         )
         if r.returncode != 0:
             raise HTTPException(status_code=403, detail="Permission denied changing permissions.")
-    logger.info(f"chmod {oct(req.mode)} {p}")
+    log_action(current_user.username, "file.chmod", str(p), oct(req.mode))
     return {"message": "Permissions updated"}
