@@ -517,9 +517,10 @@
     const { ok, err: toastErr } = useToast();
     const isAdmin = localStorage.getItem('user_role') === 'admin';
     const homeDir = '/home/' + (localStorage.getItem('username') ?? '');
-    const rootPath = isAdmin ? '/home' : homeDir;
+    const defaultRoot = isAdmin ? '/home' : homeDir;
 
-    const [currentPath, setCurrentPath] = useState(rootPath);
+    const [currentPath, setCurrentPath] = useState(defaultRoot);
+    const [treeRoot, setTreeRoot] = useState(defaultRoot);
     const [editorFile, setEditorFile]   = useState(null);
     const [viewerFile, setViewerFile]   = useState(null);
 
@@ -545,8 +546,8 @@
 
     // ── Data fetching ───────────────────────────────────────────────────────────
     const { data: treeData, loading: treeLoading, refetch: refetchTree } = useApi(
-      () => sdk.fetch('GET', '/cpanelapi/files/tree?path=' + encodeURIComponent(rootPath)),
-      [rootPath]
+      () => sdk.fetch('GET', '/cpanelapi/files/tree?path=' + encodeURIComponent(treeRoot)),
+      [treeRoot]
     );
     const { data: filesData, loading: filesLoading, refetch: refetchFiles } = useApi(
       () => sdk.fetch('GET', '/cpanelapi/files/list?path=' + encodeURIComponent(currentPath)),
@@ -567,7 +568,7 @@
 
     // ── Navigation ──────────────────────────────────────────────────────────────
     const handleGoUp = () => {
-      if (currentPath === rootPath || currentPath === '/') return;
+      if (currentPath === treeRoot || currentPath === '/') return;
       const parts = currentPath.split('/').filter(Boolean);
       parts.pop();
       setCurrentPath('/' + parts.join('/'));
@@ -802,7 +803,7 @@
                 onClick=${() => setClipboard(null)}
               >✕</button>
             `}
-            <button class="btn btn-ghost btn-sm" title="Go Up" onClick=${handleGoUp} disabled=${currentPath === rootPath || currentPath === '/'}>
+            <button class="btn btn-ghost btn-sm" title="Go Up" onClick=${handleGoUp} disabled=${currentPath === treeRoot || currentPath === '/'}>
               <${ArrowUpIcon} /> Up
             </button>
             <button class="btn btn-ghost btn-sm" title="Refresh" onClick=${() => { refetchFiles(); refetchTree(); }}>
@@ -834,7 +835,7 @@
                 ].map(({ label, path }) => html`
                   <div
                     key=${path}
-                    onClick=${() => setCurrentPath(path)}
+                    onClick=${() => { setCurrentPath(path); setTreeRoot(path); }}
                     style=${{
                       padding: '5px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12,
                       background: currentPath === path || currentPath.startsWith(path + '/') ? 'var(--accent-dim)' : 'transparent',
