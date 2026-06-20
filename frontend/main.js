@@ -821,17 +821,44 @@
         <div style=${{ display: 'flex', gap: 20, alignItems: 'stretch' }}>
 
           <!-- Folder Tree sidebar -->
-          <div class="card" style=${{ width: 250, flexShrink: 0, padding: '16px 12px', background: 'var(--bg-2)', display: 'flex', flexDirection: 'column' }}>
-            <span style=${{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-2)', letterSpacing: '.08em', marginBottom: 12, paddingLeft: 12 }}>
-              Folder Tree
-            </span>
-            <div style=${{ flex: 1, overflowY: 'auto', maxHeight: '65vh' }}>
-              ${treeLoading
-                ? html`<div style=${{ color: 'var(--text-3)', fontSize: 12, paddingLeft: 12 }}>Loading tree…</div>`
-                : treeData
-                  ? html`<${FolderNode} node=${treeData} currentPath=${currentPath} onSelectPath=${setCurrentPath} />`
-                  : html`<div style=${{ color: 'var(--text-3)', fontSize: 12, paddingLeft: 12 }}>No directories</div>`
-              }
+          <div class="card" style=${{ width: 250, flexShrink: 0, padding: '16px 12px', background: 'var(--bg-2)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            ${isAdmin && html`
+              <div>
+                <span style=${{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-2)', letterSpacing: '.08em', display: 'block', marginBottom: 8, paddingLeft: 12 }}>
+                  Quick Access
+                </span>
+                ${[
+                  { label: '🏠 Home', path: '/home' },
+                  { label: '💾 Data (/data)', path: '/data' },
+                ].map(({ label, path }) => html`
+                  <div
+                    key=${path}
+                    onClick=${() => setCurrentPath(path)}
+                    style=${{
+                      padding: '5px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12,
+                      background: currentPath === path || currentPath.startsWith(path + '/') ? 'var(--accent-dim)' : 'transparent',
+                      color: currentPath === path || currentPath.startsWith(path + '/') ? 'var(--accent)' : 'var(--text)',
+                      fontWeight: currentPath.startsWith(path) ? 500 : 400,
+                      transition: 'all var(--transition)',
+                    }}
+                  >${label}</div>
+                `)}
+              </div>
+            `}
+
+            <div>
+              <span style=${{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-2)', letterSpacing: '.08em', display: 'block', marginBottom: 8, paddingLeft: 12 }}>
+                Folder Tree
+              </span>
+              <div style=${{ overflowY: 'auto', maxHeight: '55vh' }}>
+                ${treeLoading
+                  ? html`<div style=${{ color: 'var(--text-3)', fontSize: 12, paddingLeft: 12 }}>Loading tree…</div>`
+                  : treeData
+                    ? html`<${FolderNode} node=${treeData} currentPath=${currentPath} onSelectPath=${setCurrentPath} />`
+                    : html`<div style=${{ color: 'var(--text-3)', fontSize: 12, paddingLeft: 12 }}>No directories</div>`
+                }
+              </div>
             </div>
           </div>
 
