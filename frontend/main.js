@@ -543,6 +543,7 @@
 
     const fileInputRef = useRef(null);
     const [localFiles, setLocalFiles] = useState(null);
+    const [uploadState, setUploadState] = useState(null); // null | { filename, progress }
 
     // ── Data fetching ───────────────────────────────────────────────────────────
     const { data: treeData, loading: treeLoading, refetch: refetchTree } = useApi(
@@ -608,29 +609,48 @@
     };
 
     // ── Upload ──────────────────────────────────────────────────────────────────
-    const handleUpload = async (e) => {
+    const handleUpload = (e) => {
       const file = e.target.files[0];
       if (!file) return;
+
       const formData = new FormData();
       formData.append('path', currentPath);
       formData.append('file', file);
-      try {
-        ok('Uploading ' + file.name + '...');
-        const token = localStorage.getItem('auth_token') ?? '';
-        const response = await fetch('/cpanelapi/files/upload', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token },
-          body: formData,
-        });
-        if (!response.ok) throw new Error(await response.text());
-        ok('Uploaded ' + file.name + ' successfully!');
-        refetchFiles();
-        refetchTree();
-      } catch (err) {
-        toastErr(err.message || 'Upload failed');
-      } finally {
+
+      const token = localStorage.getItem('auth_token') ?? '';
+      const xhr = new XMLHttpRequest();
+
+      setUploadState({ filename: file.name, progress: 0 });
+
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          setUploadState({ filename: file.name, progress: Math.round(ev.loaded / ev.total * 100) });
+        }
+      };
+
+      xhr.onload = () => {
+        setUploadState(null);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          ok('Uploaded ' + file.name + ' successfully!');
+          refetchFiles();
+          refetchTree();
+        } else {
+          let msg = 'Upload failed';
+          try { msg = JSON.parse(xhr.responseText)?.detail || xhr.responseText || msg; } catch (_) {}
+          toastErr(msg);
+        }
         if (fileInputRef.current) fileInputRef.current.value = '';
-      }
+      };
+
+      xhr.onerror = () => {
+        setUploadState(null);
+        toastErr('Upload failed — network error');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+
+      xhr.open('POST', '/cpanelapi/files/upload');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+      xhr.send(formData);
     };
 
     // ── Row selection logic ─────────────────────────────────────────────────────
@@ -811,9 +831,19 @@
             </button>
             <button class="btn btn-ghost btn-sm" onClick=${() => setMkfileOpen(true)}>+ New File</button>
             <button class="btn btn-ghost btn-sm" onClick=${() => setMkdirOpen(true)}>+ New Folder</button>
-            <button class="btn btn-primary btn-sm" onClick=${() => fileInputRef.current?.click()}>
-              <${UploadIcon} /> Upload
-            </button>
+            ${uploadState ? html`
+              <div style=${{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 'var(--radius)', padding: '4px 10px', fontSize: 12, maxWidth: 260 }}>
+                <span style=${{ color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title=${uploadState.filename}>${uploadState.filename}</span>
+                <div style=${{ width: 80, height: 6, background: 'var(--border-2)', borderRadius: 99, flexShrink: 0, overflow: 'hidden' }}>
+                  <div style=${{ width: uploadState.progress + '%', height: '100%', background: 'var(--accent)', borderRadius: 99, transition: 'width 0.15s' }}></div>
+                </div>
+                <span style=${{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>${uploadState.progress}%</span>
+              </div>
+            ` : html`
+              <button class="btn btn-primary btn-sm" onClick=${() => fileInputRef.current?.click()}>
+                <${UploadIcon} /> Upload
+              </button>
+            `}
             <input type="file" ref=${fileInputRef} style=${{ display: 'none' }} onChange=${handleUpload} />
           </div>
         </div>
