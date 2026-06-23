@@ -512,6 +512,65 @@
     `;
   }
 
+  // ── Google Drive-style upload progress panel ──────────────────────────────────
+  function UploadProgressPanel({ uploadState, onDismiss }) {
+    if (!uploadState) return null;
+    const { filename, progress, status, error } = uploadState;
+    const isDone = status === 'done';
+    const isErr  = status === 'error';
+    const barColor = isErr ? 'var(--err)' : isDone ? 'var(--ok)' : 'var(--accent)';
+
+    return html`
+      <div style=${{
+        position: 'fixed', bottom: 24, right: 24, zIndex: 2000,
+        width: 340, background: 'var(--bg-2)',
+        border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.18)', overflow: 'hidden',
+        fontFamily: 'var(--font-ui)',
+      }}>
+        <div style=${{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '9px 14px', background: 'var(--bg-3)',
+          borderBottom: '1px solid var(--border-2)',
+        }}>
+          <span style=${{ fontSize: 12, fontWeight: 600,
+            color: isDone ? 'var(--ok)' : isErr ? 'var(--err)' : 'var(--text)',
+          }}>
+            ${isDone ? '✓ Upload complete' : isErr ? '✗ Upload failed' : 'Uploading…'}
+          </span>
+          ${(isDone || isErr) && html`
+            <button
+              class="btn btn-ghost btn-sm"
+              style=${{ padding: '1px 6px', fontSize: 16, lineHeight: 1 }}
+              onClick=${onDismiss}
+            >×</button>
+          `}
+        </div>
+        <div style=${{ padding: '10px 14px 14px' }}>
+          <div style=${{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style=${{
+              fontSize: 12, color: 'var(--text)', flex: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }} title=${filename}>${filename}</span>
+            <span style=${{ fontSize: 12, fontWeight: 600, color: barColor, flexShrink: 0 }}>
+              ${isErr ? 'Error' : progress + '%'}
+            </span>
+          </div>
+          <div style=${{ height: 4, background: 'var(--border-2)', borderRadius: 99, overflow: 'hidden' }}>
+            <div style=${{
+              width: progress + '%', height: '100%',
+              background: barColor, borderRadius: 99,
+              transition: 'width 0.15s ease',
+            }}></div>
+          </div>
+          ${isErr && error && html`
+            <div style=${{ fontSize: 11, color: 'var(--err)', marginTop: 6 }}>${error}</div>
+          `}
+        </div>
+      </div>
+    `;
+  }
+
   // ── Root Plugin component ─────────────────────────────────────────────────────
   function FileManagerPlugin() {
     const { ok, err: toastErr } = useToast();
@@ -620,32 +679,44 @@
       const token = localStorage.getItem('auth_token') ?? '';
       const xhr = new XMLHttpRequest();
 
-      setUploadState({ filename: file.name, progress: 0 });
+      setUploadState({ filename: file.name, progress: 0, status: 'uploading' });
 
       xhr.upload.onprogress = (ev) => {
         if (ev.lengthComputable) {
-          setUploadState({ filename: file.name, progress: Math.round(ev.loaded / ev.total * 100) });
+          const pct = Math.round(ev.loaded / ev.total * 100);
+          setUploadState(prev => prev ? { ...prev, progress: pct } : null);
         }
       };
 
       xhr.onload = () => {
-        setUploadState(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
         if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadState(prev => prev ? { ...prev, progress: 100, status: 'done' } : null);
           ok('Uploaded ' + file.name + ' successfully!');
           refetchFiles();
           refetchTree();
+          setTimeout(() => setUploadState(null), 4000);
         } else {
-          let msg = 'Upload failed';
-          try { msg = JSON.parse(xhr.responseText)?.detail || xhr.responseText || msg; } catch (_) {}
+          let msg;
+          if (xhr.status === 413) {
+            msg = 'File too large — increase the upload limit in Web Server settings';
+          } else if (xhr.status === 403) {
+            msg = 'Permission denied';
+          } else if (xhr.status === 401) {
+            msg = 'Session expired — please log in again';
+          } else {
+            msg = 'Upload failed';
+            try { msg = JSON.parse(xhr.responseText)?.detail || msg; } catch (_) {}
+          }
+          setUploadState(prev => prev ? { ...prev, status: 'error', error: msg } : null);
           toastErr(msg);
         }
-        if (fileInputRef.current) fileInputRef.current.value = '';
       };
 
       xhr.onerror = () => {
-        setUploadState(null);
-        toastErr('Upload failed — network error');
         if (fileInputRef.current) fileInputRef.current.value = '';
+        setUploadState(prev => prev ? { ...prev, status: 'error', error: 'Network error' } : null);
+        toastErr('Upload failed — network error');
       };
 
       xhr.open('POST', '/cpanelapi/files/upload');
@@ -831,19 +902,9 @@
             </button>
             <button class="btn btn-ghost btn-sm" onClick=${() => setMkfileOpen(true)}>+ New File</button>
             <button class="btn btn-ghost btn-sm" onClick=${() => setMkdirOpen(true)}>+ New Folder</button>
-            ${uploadState ? html`
-              <div style=${{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 'var(--radius)', padding: '4px 10px', fontSize: 12, maxWidth: 260 }}>
-                <span style=${{ color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title=${uploadState.filename}>${uploadState.filename}</span>
-                <div style=${{ width: 80, height: 6, background: 'var(--border-2)', borderRadius: 99, flexShrink: 0, overflow: 'hidden' }}>
-                  <div style=${{ width: uploadState.progress + '%', height: '100%', background: 'var(--accent)', borderRadius: 99, transition: 'width 0.15s' }}></div>
-                </div>
-                <span style=${{ color: 'var(--accent)', fontWeight: 600, flexShrink: 0 }}>${uploadState.progress}%</span>
-              </div>
-            ` : html`
-              <button class="btn btn-primary btn-sm" onClick=${() => fileInputRef.current?.click()}>
-                <${UploadIcon} /> Upload
-              </button>
-            `}
+            <button class="btn btn-primary btn-sm" onClick=${() => fileInputRef.current?.click()} disabled=${uploadState?.status === 'uploading'}>
+              <${UploadIcon} /> ${uploadState?.status === 'uploading' ? 'Uploading…' : 'Upload'}
+            </button>
             <input type="file" ref=${fileInputRef} style=${{ display: 'none' }} onChange=${handleUpload} />
           </div>
         </div>
@@ -1235,6 +1296,11 @@
             onDone=${() => { setChmodTarget(null); refetchFiles(); }}
           />
         `}
+
+        <${UploadProgressPanel}
+          uploadState=${uploadState}
+          onDismiss=${() => setUploadState(null)}
+        />
 
       </div>
     `;
