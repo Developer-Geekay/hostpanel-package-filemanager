@@ -67,6 +67,18 @@ async def rename_path(req: RenameRequest, current_user: User = Depends(get_curre
         raise HTTPException(status_code=500, detail=f"Rename failed: {str(e)}")
 
 
+def _add_to_zip(zipf: zipfile.ZipFile, filepath: str, arcname: str) -> None:
+    """Add a file to a zip archive, falling back to sudo cat for user-owned files."""
+    try:
+        zipf.write(filepath, arcname)
+    except PermissionError:
+        r = subprocess.run(["sudo", "-n", "cat", filepath], capture_output=True, check=False)
+        if r.returncode != 0:
+            raise PermissionError(f"Cannot read {filepath}: {r.stderr.decode().strip()}")
+        info = zipfile.ZipInfo(arcname)
+        zipf.writestr(info, r.stdout)
+
+
 @router.post("/zip")
 async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_user)):
     if not req.paths:
@@ -93,9 +105,9 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
                         for file in files:
                             filepath = os.path.join(root, file)
                             arcname = os.path.relpath(filepath, src.parent)
-                            zipf.write(filepath, arcname)
+                            _add_to_zip(zipf, filepath, arcname)
                 else:
-                    zipf.write(src, src.name)
+                    _add_to_zip(zipf, str(src), src.name)
         # Move to destination — use sudo tee since dest dir may not be writable by API user
         try:
             tmp.rename(dest)
@@ -113,27 +125,28 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
         raise HTTPException(status_code=500, detail=f"Zip compression failed: {str(e)}")
 
 
+def _is_macos_junk(name: str) -> bool:
+    parts = Path(name).parts
+    return parts[0] in ("__MACOSX",) or Path(name).name in (".DS_Store", "._.DS_Store")
+
+
 @router.post("/unzip")
 async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current_user)):
     archive = _safe_path(req.archive_path, current_user)
     if not archive.exists():
         raise HTTPException(status_code=404, detail="Archive not found.")
-    
+
     dest_dir = _safe_path(req.dest_dir, current_user)
     if not dest_dir.exists():
         dest_dir.mkdir(parents=True, exist_ok=True)
     elif not dest_dir.is_dir():
         raise HTTPException(status_code=400, detail="Destination must be a directory.")
-        
-    def _is_macos_junk(name: str) -> bool:
-        parts = Path(name).parts
-        return parts[0] in ("__MACOSX",) or Path(name).name in (".DS_Store", "._.DS_Store")
 
     try:
         with zipfile.ZipFile(archive, 'r') as zipf:
             members = [m for m in zipf.infolist() if not _is_macos_junk(m.filename)]
 
-            # Zip Slip path traversal check on filtered members only
+            # Zip Slip path traversal check
             for member in members:
                 target_path = Path(os.path.realpath(dest_dir / member.filename))
                 try:
@@ -141,31 +154,32 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
                 except ValueError:
                     raise HTTPException(status_code=403, detail="Unsafe zip archive (Zip Slip attempt detected).")
 
-            # Try fast extractall first; fall back to sudo-based member-by-member
-            # extraction when the dest_dir is owned by a different system user.
-            try:
-                zipf.extractall(dest_dir, members=[m.filename for m in members])
-            except PermissionError:
-                for member in members:
-                    target_path = dest_dir / member.filename
-                    if member.is_dir():
-                        subprocess.run(
-                            ["sudo", "-n", "mkdir", "-p", str(target_path)],
-                            capture_output=True, check=False,
-                        )
-                    else:
-                        # Create parent dir with sudo before writing
-                        subprocess.run(
-                            ["sudo", "-n", "mkdir", "-p", str(target_path.parent)],
-                            capture_output=True, check=False,
-                        )
-                        data = zipf.read(member.filename)
-                        r = subprocess.run(
-                            ["sudo", "-n", "tee", str(target_path)],
-                            input=data, capture_output=True, check=False,
-                        )
-                        if r.returncode != 0:
-                            raise PermissionError(f"sudo tee failed for {member.filename}")
+            # Always use sudo-based member-by-member extraction so that
+            # destination dirs owned by other system users (e.g. gokulakannan)
+            # are handled correctly without relying on Python's extractall.
+            for member in members:
+                target_path = dest_dir / member.filename
+                if member.is_dir():
+                    r = subprocess.run(
+                        ["sudo", "-n", "mkdir", "-p", str(target_path)],
+                        capture_output=True, check=False,
+                    )
+                    if r.returncode != 0:
+                        raise PermissionError(f"sudo mkdir failed for {member.filename}: {r.stderr.decode().strip()}")
+                else:
+                    r = subprocess.run(
+                        ["sudo", "-n", "mkdir", "-p", str(target_path.parent)],
+                        capture_output=True, check=False,
+                    )
+                    if r.returncode != 0:
+                        raise PermissionError(f"sudo mkdir failed for parent of {member.filename}: {r.stderr.decode().strip()}")
+                    data = zipf.read(member.filename)
+                    r = subprocess.run(
+                        ["sudo", "-n", "tee", str(target_path)],
+                        input=data, capture_output=True, check=False,
+                    )
+                    if r.returncode != 0:
+                        raise PermissionError(f"sudo tee failed for {member.filename}: {r.stderr.decode().strip()}")
 
         log_action(current_user.username, "file.unzip", str(archive), f"→ {dest_dir.name}")
         return {"message": f"Extracted archive to {dest_dir.name}"}
