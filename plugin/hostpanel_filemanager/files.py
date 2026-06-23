@@ -142,9 +142,13 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
              "-x", "__MACOSX/*", "-x", "__MACOSX"],
             capture_output=True, text=True, check=False,
         )
-        # unzip exits 1 for non-fatal warnings (e.g. duplicate filenames); treat as success
-        if r.returncode > 1:
-            raise PermissionError(r.stderr.strip() or r.stdout.strip())
+        # unzip exit codes: 0=clean, 1=warnings-but-extracted, 2+=real error.
+        # sudo -n also exits 1 when no NOPASSWD rule matches — check stdout for
+        # actual extraction output to tell the two apart.
+        extracted = any(k in r.stdout for k in ('inflating:', 'extracting:', 'creating:'))
+        if r.returncode != 0 and not extracted:
+            output = (r.stderr + "\n" + r.stdout).strip()
+            raise PermissionError(f"unzip failed (exit {r.returncode}): {output}")
 
         log_action(current_user.username, "file.unzip", str(archive), f"→ {dest_dir.name}")
         return {"message": f"Extracted archive to {dest_dir.name}"}
