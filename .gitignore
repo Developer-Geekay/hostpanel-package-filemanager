@@ -12,3 +12,6 @@ pip-delete-this-directory.txt
 .github/workflows/release-state
 *.zip
 *.tar.gz
+plugin/build/
+plugin/dist/
+plugin/*.egg-info/

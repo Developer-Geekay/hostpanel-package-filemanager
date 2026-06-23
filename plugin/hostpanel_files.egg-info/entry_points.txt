@@ -1,8 +1,0 @@
-[hostpanel.lifecycle]
-hostpanel-files = hostpanel_filemanager.lifecycle:pre_uninstall
-
-[hostpanel.modules]
-files = hostpanel_filemanager.plugin
-
-[hostpanel.setup]
-hostpanel-files = hostpanel_filemanager.lifecycle:on_install

@@ -1,10 +1,17 @@
 # File Manager plugin sudoers
-# Allows the hostpanel service user to operate on files owned by hosting users.
 # Core sudoers already grants: /usr/bin/tee *, /usr/bin/cat *, /usr/bin/mkdir -p *, /usr/bin/chmod 644 *
-# This file adds the additional operations specific to the file manager.
 
-# Move files/dirs across ownership boundaries (used by file manager move operation)
+# Extract zip archives into user-owned directories
+%hostpanel ALL=(root) NOPASSWD: /usr/bin/unzip *
+
+# Create zip archives from user-owned files
+%hostpanel ALL=(root) NOPASSWD: /usr/bin/zip *
+
+# Move files/dirs across ownership boundaries and move temp archives to destination
 %hostpanel ALL=(root) NOPASSWD: /usr/bin/mv *
 
-# Custom chmod wrapper that accepts arbitrary octal modes (used by file manager chmod operation)
+# Remove temp zip files created in /tmp by sudo zip
+%hostpanel ALL=(root) NOPASSWD: /usr/bin/rm -f /tmp/_hpzip_*
+
+# Custom chmod wrapper for arbitrary octal modes
 %hostpanel ALL=(root) NOPASSWD: /opt/hostpanel/bin/hp-chmod *
