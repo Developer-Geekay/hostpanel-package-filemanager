@@ -125,24 +125,28 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
     elif not dest_dir.is_dir():
         raise HTTPException(status_code=400, detail="Destination must be a directory.")
         
+    def _is_macos_junk(name: str) -> bool:
+        parts = Path(name).parts
+        return parts[0] in ("__MACOSX",) or Path(name).name in (".DS_Store", "._.DS_Store")
+
     try:
         with zipfile.ZipFile(archive, 'r') as zipf:
-            # Zip Slip path traversal attack protection
-            for member in zipf.infolist():
-                # Resolve target path cleanly and safely
+            members = [m for m in zipf.infolist() if not _is_macos_junk(m.filename)]
+
+            # Zip Slip path traversal check on filtered members only
+            for member in members:
                 target_path = Path(os.path.realpath(dest_dir / member.filename))
-                # Raise 403 / escape check if it travels outside dest_dir
                 try:
                     target_path.relative_to(dest_dir)
                 except ValueError:
                     raise HTTPException(status_code=403, detail="Unsafe zip archive (Zip Slip attempt detected).")
-            
-            # If all paths are safe, perform extraction
+
+            # Try fast extractall first; fall back to sudo-based member-by-member
+            # extraction when the dest_dir is owned by a different system user.
             try:
-                zipf.extractall(dest_dir)
+                zipf.extractall(dest_dir, members=[m.filename for m in members])
             except PermissionError:
-                # Fall back to member-by-member extraction via sudo tee / mkdir
-                for member in zipf.infolist():
+                for member in members:
                     target_path = dest_dir / member.filename
                     if member.is_dir():
                         subprocess.run(
@@ -150,7 +154,11 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
                             capture_output=True, check=False,
                         )
                     else:
-                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        # Create parent dir with sudo before writing
+                        subprocess.run(
+                            ["sudo", "-n", "mkdir", "-p", str(target_path.parent)],
+                            capture_output=True, check=False,
+                        )
                         data = zipf.read(member.filename)
                         r = subprocess.run(
                             ["sudo", "-n", "tee", str(target_path)],
@@ -158,6 +166,7 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
                         )
                         if r.returncode != 0:
                             raise PermissionError(f"sudo tee failed for {member.filename}")
+
         log_action(current_user.username, "file.unzip", str(archive), f"→ {dest_dir.name}")
         return {"message": f"Extracted archive to {dest_dir.name}"}
     except HTTPException:
