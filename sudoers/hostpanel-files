@@ -1,5 +1,9 @@
 # File Manager plugin sudoers
-# Core sudoers already grants: /usr/bin/tee *, /usr/bin/cat *, /usr/bin/mkdir -p *, /usr/bin/chmod 644 *
+# Core sudoers already grants: /usr/bin/tee *, /usr/bin/cat *, /usr/bin/mkdir -p *,
+# /usr/bin/chmod <modes> *, /usr/bin/rm -f *, /usr/bin/rm -rf *, /usr/sbin/visudo -c -f *
+
+# Install required system packages on first install/update (on_install lifecycle hook)
+%hostpanel ALL=(root) NOPASSWD: /usr/bin/apt-get install -y unzip zip
 
 # Extract zip archives into user-owned directories
 %hostpanel ALL=(root) NOPASSWD: /usr/bin/unzip *
@@ -7,7 +11,7 @@
 # Create zip archives from user-owned files
 %hostpanel ALL=(root) NOPASSWD: /usr/bin/zip *
 
-# Move files/dirs across ownership boundaries and move temp archives to destination
+# Move files/dirs across ownership boundaries and place temp archives at destination
 %hostpanel ALL=(root) NOPASSWD: /usr/bin/mv *
 
 # Remove temp zip files created in /tmp by sudo zip
