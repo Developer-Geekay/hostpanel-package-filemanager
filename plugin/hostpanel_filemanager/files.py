@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from auth import User
 from deps import get_current_user
 from modules.audit.logger import log_action
-from routers.files import _safe_path
+from routers.files import _safe_path, _args
 
 router = APIRouter(prefix="/cpanelapi/filemanager", tags=["FileManager"])
 logger = logging.getLogger(__name__)
@@ -47,17 +47,18 @@ class ChmodRequest(BaseModel):
 
 @router.post("/rename")
 async def rename_path(req: RenameRequest, current_user: User = Depends(get_current_user)):
-    p = _safe_path(req.path, current_user)
+    lu, role = _args(current_user)
+    p = _safe_path(req.path, lu, role)
     if not p.exists():
         raise HTTPException(status_code=404, detail="Source path not found.")
-    
+
     # Target path in the same parent directory
     target = p.parent / req.new_name
-    _safe_path(str(target), current_user)  # validate target path
-    
+    _safe_path(str(target), lu, role)  # validate target path
+
     if target.exists():
         raise HTTPException(status_code=409, detail="Destination name already exists.")
-        
+
     try:
         shutil.move(str(p), str(target))
         log_action(current_user.username, "file.rename", str(p), f"→ {req.new_name}")
@@ -72,7 +73,8 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
     if not req.paths:
         raise HTTPException(status_code=400, detail="No paths provided.")
 
-    srcs = [_safe_path(p, current_user) for p in req.paths]
+    lu, role = _args(current_user)
+    srcs = [_safe_path(p, lu, role) for p in req.paths]
     for src in srcs:
         if not src.exists():
             raise HTTPException(status_code=404, detail=f"Path not found: {src.name}")
@@ -82,7 +84,7 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
         archive_name += ".zip"
 
     dest = srcs[0].parent / archive_name
-    _safe_path(str(dest), current_user)
+    _safe_path(str(dest), lu, role)
 
     # Use a safe basename so archive_name can't escape /tmp/ via path traversal
     tmp = Path("/tmp") / f"_hpzip_{Path(archive_name).name}"
@@ -117,11 +119,12 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
 
 @router.post("/unzip")
 async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current_user)):
-    archive = _safe_path(req.archive_path, current_user)
+    lu, role = _args(current_user)
+    archive = _safe_path(req.archive_path, lu, role)
     if not archive.exists():
         raise HTTPException(status_code=404, detail="Archive not found.")
 
-    dest_dir = _safe_path(req.dest_dir, current_user)
+    dest_dir = _safe_path(req.dest_dir, lu, role)
 
     try:
         # Zip Slip safety check — scan member names before extracting
@@ -138,7 +141,7 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
         # -o  overwrite existing files without prompting
         # -x  exclude macOS metadata (__MACOSX dirs and .DS_Store files)
         r = subprocess.run(
-            ["sudo", "-n", "unzip", "-o", str(archive), "-d", str(dest_dir),
+            ["sudo", "-n", "/usr/bin/unzip", "-o", str(archive), "-d", str(dest_dir),
              "-x", "__MACOSX/*", "-x", "__MACOSX"],
             capture_output=True, text=True, check=False,
         )
@@ -163,12 +166,13 @@ async def unzip_path(req: UnzipRequest, current_user: User = Depends(get_current
 async def move_paths(req: MoveRequest, current_user: User = Depends(get_current_user)):
     if not req.paths:
         raise HTTPException(status_code=400, detail="No paths provided.")
-    dest_dir = _safe_path(req.dest_dir, current_user)
+    lu, role = _args(current_user)
+    dest_dir = _safe_path(req.dest_dir, lu, role)
     if not dest_dir.exists() or not dest_dir.is_dir():
         raise HTTPException(status_code=400, detail="Destination directory not found.")
     errors = []
     for raw_path in req.paths:
-        src = _safe_path(raw_path, current_user)
+        src = _safe_path(raw_path, lu, role)
         if not src.exists():
             errors.append(f"{src.name}: not found")
             continue
@@ -192,12 +196,13 @@ async def move_paths(req: MoveRequest, current_user: User = Depends(get_current_
 async def copy_paths(req: CopyRequest, current_user: User = Depends(get_current_user)):
     if not req.paths:
         raise HTTPException(status_code=400, detail="No paths provided.")
-    dest_dir = _safe_path(req.dest_dir, current_user)
+    lu, role = _args(current_user)
+    dest_dir = _safe_path(req.dest_dir, lu, role)
     if not dest_dir.exists() or not dest_dir.is_dir():
         raise HTTPException(status_code=400, detail="Destination directory not found.")
     errors = []
     for raw_path in req.paths:
-        src = _safe_path(raw_path, current_user)
+        src = _safe_path(raw_path, lu, role)
         if not src.exists():
             errors.append(f"{src.name}: not found")
             continue
@@ -231,7 +236,8 @@ async def copy_paths(req: CopyRequest, current_user: User = Depends(get_current_
 async def chmod_path(req: ChmodRequest, current_user: User = Depends(get_current_user)):
     if not (0 <= req.mode <= 0o7777):
         raise HTTPException(status_code=400, detail="Invalid mode value.")
-    p = _safe_path(req.path, current_user)
+    lu, role = _args(current_user)
+    p = _safe_path(req.path, lu, role)
     if not p.exists():
         raise HTTPException(status_code=404, detail="Path not found.")
     try:
