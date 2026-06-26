@@ -14,6 +14,8 @@
 # Move files/dirs across ownership boundaries and place temp archives at destination
 %hostpanel ALL=(root) NOPASSWD: /usr/bin/mv *
 
+# Copy files/dirs across ownership boundaries
+%hostpanel ALL=(root) NOPASSWD: /usr/bin/cp *
 
 # Custom chmod wrapper for arbitrary octal modes
 %hostpanel ALL=(root) NOPASSWD: /opt/hostpanel/bin/hp-chmod *
