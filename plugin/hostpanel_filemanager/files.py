@@ -92,7 +92,7 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
 
         # sudo zip reads user-owned files; runs from parent dir so archive entries are relative
         r = subprocess.run(
-            ["sudo", "-n", "zip", "-r", str(tmp)] + rel_names,
+            ["sudo", "-n", "/usr/bin/zip", "-r", str(tmp)] + rel_names,
             cwd=str(parent_dir),
             capture_output=True, text=True, check=False,
         )
@@ -101,7 +101,7 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
 
         # Move the temp archive into the destination directory (also may be user-owned)
         r = subprocess.run(
-            ["sudo", "-n", "mv", str(tmp), str(dest)],
+            ["sudo", "-n", "/usr/bin/mv", str(tmp), str(dest)],
             capture_output=True, text=True, check=False,
         )
         if r.returncode != 0:
@@ -110,7 +110,7 @@ async def zip_path(req: ZipRequest, current_user: User = Depends(get_current_use
         log_action(current_user.username, "file.zip", archive_name, f"{len(req.paths)} item(s)")
         return {"message": f"Created archive {archive_name}"}
     except Exception as e:
-        subprocess.run(["sudo", "-n", "rm", "-f", str(tmp)], capture_output=True, check=False)
+        subprocess.run(["/usr/bin/rm", "-f", str(tmp)], capture_output=True, check=False)
         logger.error(f"Zip failed: {e}")
         raise HTTPException(status_code=500, detail=f"Zip compression failed: {str(e)}")
 
@@ -179,7 +179,7 @@ async def move_paths(req: MoveRequest, current_user: User = Depends(get_current_
         try:
             shutil.move(str(src), str(dest))
         except PermissionError:
-            r = subprocess.run(["sudo", "-n", "mv", str(src), str(dest)], capture_output=True, check=False)
+            r = subprocess.run(["sudo", "-n", "/usr/bin/mv", str(src), str(dest)], capture_output=True, check=False)
             if r.returncode != 0:
                 errors.append(f"{src.name}: permission denied")
     if errors:
@@ -215,7 +215,12 @@ async def copy_paths(req: CopyRequest, current_user: User = Depends(get_current_
             else:
                 shutil.copy2(str(src), str(dest))
         except PermissionError:
-            errors.append(f"{src.name}: permission denied")
+            r = subprocess.run(
+                ["sudo", "-n", "/usr/bin/cp", "-rp", str(src), str(dest)],
+                capture_output=True, text=True, check=False,
+            )
+            if r.returncode != 0:
+                errors.append(f"{src.name}: permission denied (sudo: {r.stderr.strip()})")
     if errors:
         raise HTTPException(status_code=409, detail="; ".join(errors))
     log_action(current_user.username, "file.copy", req.dest_dir, f"{len(req.paths)} item(s)")
